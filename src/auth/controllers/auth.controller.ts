@@ -72,7 +72,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'User not authenticated.',
   })
-  async getProfile(@User() user) {
-    return user;
+  async getProfile(@User('_id') userId: string) {
+    return this.authService.getProfile(userId);
   }
 }
