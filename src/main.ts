@@ -40,7 +40,7 @@ function setupGlobalPipes(app: any) {
 }
 
 function setupCors(app: any) {
-  const allowedOrigins = ['http://localhost:3000'];
+  const allowedOrigins = ['http://localhost:5173'];
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,

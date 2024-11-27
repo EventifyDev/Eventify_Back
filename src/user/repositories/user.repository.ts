@@ -14,11 +14,17 @@ export class UserRepository implements IUserRepository {
   }
 
   async findUserById(id: string): Promise<User | null> {
-    return this.userModel.findById(id).exec();
+    return this.userModel.findById(id).select('-password -__v').exec();
   }
 
   async findUserByEmail(email: string): Promise<User | null> {
-    return this.userModel.findOne({ email }).select('+password').exec();
+    const user = await this.userModel
+      .findOne({ email })
+      .select('+password')
+      .lean()
+      .exec();
+
+    return user as User | null;
   }
 
   async findUserByUsername(username: string): Promise<User | null> {
