@@ -9,6 +9,9 @@ import { AuthModule } from './auth/auth.module';
 import { APP_FILTER } from '@nestjs/core';
 import { ErrorHandlingMiddleware } from './common/middlewares/error-handling.middleware';
 import { JwtAuthMiddleware } from './common/middlewares/jwt-auth.middleware';
+import { EventModule } from './event/event.module';
+import { UploadModule } from './upload/upload.module';
+import { ParticipantModule } from './participant/participant.module';
 
 @Module({
   imports: [
@@ -17,6 +20,9 @@ import { JwtAuthMiddleware } from './common/middlewares/jwt-auth.middleware';
     UserModule,
     ProfileModule,
     AuthModule,
+    EventModule,
+    UploadModule,
+    ParticipantModule,
   ],
   controllers: [AppController],
   providers: [
