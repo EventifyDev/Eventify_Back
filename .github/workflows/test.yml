@@ -1,1 +1,109 @@
-test
+name: Tests
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+  
+env:
+  SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+
+jobs:
+  lint:
+    name: Code Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+
+  unit-tests:
+    name: Unit Tests
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Tests with Coverage
+        id: run-tests
+        run: |
+          npm run test:cov
+          
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unittests
+
+      - name: Slack Notification on Test Success
+        if: steps.run-tests.outcome == 'success'
+        run: |
+          message="🎯 *Mission Accomplished!* 🚀\n"
+          message="${message}✨ All tests are shining bright and green ✨\n"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            message="${message}\n🔍 *Pull Request Details*\n"
+            message="${message}📌 PR: *${{github.event.pull_request.title}}*\n"
+            message="${message}👨‍💻 Superhero: *${{github.event.pull_request.user.login}}*\n"
+            message="${message}🔗 Take a look: ${{github.event.pull_request.html_url}}\n"
+            message="${message}\n💫 Keep up the amazing work! 💪"
+          fi
+
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            -H 'Authorization: Bearer ${{ secrets.SLACK_TOKEN}}' \
+            --data "{\"channel\":\"#eventify-back-tests\",\"text\":\"$message\"}" \
+            https://slack.com/api/chat.postMessage
+
+      - name: Slack Notification on Test Failure
+        if: steps.run-tests.outcome == 'failure'
+        run: |
+          message="⚠️ *Houston, We Have a Problem!* 🚨\n"
+          message="${message}💥 Some tests need your attention 🔧\n"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            message="${message}\n🔍 *Pull Request Details*\n"
+            message="${message}📌 PR: *${{github.event.pull_request.title}}*\n"
+            message="${message}🦸‍♂️ Debug Hero Needed: *${{github.event.pull_request.user.login}}*\n"
+            message="${message}🔗 Investigation Link: ${{github.event.pull_request.html_url}}\n"
+            message="${message}\n💪 Don't worry, you've got this! Let's fix it together 🤝"
+          fi
+          
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            -H 'Authorization: Bearer ${{ secrets.SLACK_TOKEN}}' \
+            --data "{\"channel\":\"#eventify-back-tests\",\"text\":\"$message\"}" \
+            https://slack.com/api/chat.postMessage
+
+  sonar-analysis:
+    name: SonarQube Analysis
+    needs: [unit-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

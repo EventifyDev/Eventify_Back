@@ -1,0 +1,71 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_run:
+    workflows: ["Tests"]
+    types:
+      - completed
+    branches: [ "main" ]
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Dockerhub
+        run: echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+
+      - name: Build the Docker image
+        run: docker build -t elmorjani/eventify-app-back:latest .
+
+      - name: Push to Dockerhub
+        run: docker push elmorjani/eventify-app-back:latest
+
+      - name: Slack Notification on Successful Build
+        if: success()
+        run: |
+          message="🚀 *Docker Build Victory!* 🎉\\n"
+          message="${message}\\n🌟 *The container has been successfully crafted and deployed!* 🌟\\n"
+          message="${message}\\n📦 Image pushed to Docker Hub and ready to conquer production!\\n"
+          message="${message}\\n👨‍🚀 *Space Commander:* ${{ github.actor }}\\n"
+          message="${message}🔧 *Mission Details:*\\n"
+          message="${message}• Repository: \`${{ github.repository }}\`\\n"
+          message="${message}• Branch: \`${{ github.ref_name }}\`\\n"
+          message="${message}\\n🔍 <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Inspect the Mission Logs>\\n"
+          message="${message}\\n💫 *Keep shipping awesome code!* 🚀"
+
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            -H 'Authorization: Bearer ${{ secrets.SLACK_TOKEN }}' \
+            --data "{\"channel\":\"eventify-back-build\",\"text\":\"$message\"}" \
+            https://slack.com/api/chat.postMessage
+
+      - name: Slack Notification on Build Failure
+        if: failure()
+        run: |
+          message="🚨 *Houston, We've Hit a Snag!* 🚨\\n"
+          message="${message}\\n💥 *Docker Build Needs Attention* 💥\\n"
+          message="${message}\\n🔧 *Technical Details:*\\n"
+          message="${message}• Repository: \`${{ github.repository }}\`\\n"
+          message="${message}• Branch: \`${{ github.ref_name }}\`\\n"
+          message="${message}• Engineer on Duty: ${{ github.actor }}\\n"
+          message="${message}\\n🚑 <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Investigate the Issue>\\n"
+          message="${message}\\n💪 *Don't worry, every error makes us stronger!*\\n"
+          message="${message}🛠️ *Time to debug and conquer!* 🦸‍♂️"
+
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            -H 'Authorization: Bearer ${{ secrets.SLACK_TOKEN }}' \
+            --data "{\"channel\":\"eventify-back-build\",\"text\":\"$message\"}" \
+            https://slack.com/api/chat.postMessage

@@ -1,0 +1,73 @@
+name: CD Pipeline
+on:
+  push:
+    branches: 
+      - main
+
+env:
+  SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull Docker image
+        run: |
+          echo "Pulling latest Docker image..."
+          sudo docker pull elmorjani/eventify-app-back:latest
+          
+      - name: Stop Old Container
+        run: |
+          echo "Stopping old container if exists..."
+          sudo docker rm -f eventify-app-back-container || true
+      
+      - name: Run Docker Container
+        id: run-container
+        run: |
+          sudo docker run -d -p 3000:3000 --name eventify-app-back-container \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e PORT=3000 \
+            -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            -e AWS_PUBLIC_BUCKET_NAME="${{ secrets.AWS_PUBLIC_BUCKET_NAME }}" \
+            -e AWS_REGION="${{ secrets.AWS_REGION }}" \
+            -e AWS_CLOUDFRONT_URL="${{ secrets.AWS_CLOUDFRONT_URL }}" \
+            -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            elmorjani/eventify-app-back
+
+      - name: Log Docker Container Output
+        run: |
+          echo "Fetching Docker container logs..."
+          sudo docker logs eventify-app-back-container || true
+          
+      - name: Slack Notification on Deployment Success
+        if: success()
+        run: |
+          message="✅ Deployment successful for branch *${{ github.ref_name }}*"
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            -H "Authorization: Bearer ${{ secrets.SLACK_TOKEN }}" \
+            --data "{\"channel\":\"#eventify-back-deployment\",\"text\":\"$message\"}" \
+            https://slack.com/api/chat.postMessage
+          
+      - name: Rollback on Deployment Failure
+        if: failure()
+        run: |
+          echo "Deployment failed, rolling back..."
+          sudo docker rm -f eventify-app-back-container || true
+          sudo docker run -d \
+            -p 3000:3000 \
+            --name eventify-app-back-container \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e PORT=3000 \
+            elmorjani/eventify-app-back:previous
+          
+      - name: Slack Notification on Deployment Failure
+        if: failure()
+        run: |
+          message="❌ Deployment failed for branch *${{ github.ref_name }}*\nInitiating rollback..."
+          curl -X POST \
+            -H 'Content-type: application/json' \
+            -H "Authorization: Bearer ${{ secrets.SLACK_TOKEN }}" \
+            --data "{\"channel\":\"#eventify-back-deployment\",\"text\":\"$message\"}" \
+            https://slack.com/api/chat.postMessage
