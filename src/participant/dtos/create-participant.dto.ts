@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateParticipantDto {
   @ApiProperty({
-    description: 'The ID of the event',
+    description: 'The ID of the event to which the participant is registered',
     example: '507f1f77bcf86cd799439011',
   })
   @IsNotEmpty()
@@ -11,7 +11,7 @@ export class CreateParticipantDto {
   eventId: string;
 
   @ApiProperty({
-    description: 'Name of the participant',
+    description: 'Name of the participant registered to the event',
     example: 'John Doe',
   })
   @IsNotEmpty()
@@ -19,7 +19,7 @@ export class CreateParticipantDto {
   username: string;
 
   @ApiProperty({
-    description: 'Email of the participant',
+    description: 'Email of the participant registered to the event',
     example: 'john@example.com',
   })
   @IsNotEmpty()
@@ -27,7 +27,7 @@ export class CreateParticipantDto {
   email: string;
 
   @ApiProperty({
-    description: 'Phone number of the participant',
+    description: 'Phone number of the participant registered to the event',
     example: '+1234567890',
   })
   @IsNotEmpty()
