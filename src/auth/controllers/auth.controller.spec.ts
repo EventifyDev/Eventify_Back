@@ -82,6 +82,7 @@ describe('AuthController', () => {
     const userId = '67464220a978f5889273313c';
 
     it('should return user profile', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...userWithoutPassword } = mockUser;
       authService.getProfile.mockResolvedValue(
         userWithoutPassword as unknown as User,
