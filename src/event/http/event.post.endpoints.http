@@ -1,0 +1,35 @@
+### Create Event with Image
+POST http://localhost:3000/api/v1/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InRlc3RyYWNoaWRAZXhhbXBsZS5jb20iLCJzdWIiOiI2NzQ4MmM3YmNjN2VlYzcxMDEyN2YxYWEiLCJpYXQiOjE3MzI5MDcyOTgsImV4cCI6MTczMjkyNTI5OH0.hMsb2lmnA8wQtD35E5O1xS7p3h7hMM8ji2REzOSeQbE
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="name"
+
+Sports Conference 2022
+--boundary
+Content-Disposition: form-data; name="description"
+
+Join us for an amazing sports conference with industry experts and innovative workshops. This will be a great opportunity to network!
+--boundary
+Content-Disposition: form-data; name="date"
+
+2024-12-01
+--boundary
+Content-Disposition: form-data; name="capacity"
+
+700
+--boundary
+Content-Disposition: form-data; name="location"
+
+Digital Convention Center, Silicon Valley
+--boundary
+Content-Disposition: form-data; name="eventType"
+
+PROFESSIONAL
+--boundary
+Content-Disposition: form-data; name="image"; filename="conference.jpg"
+Content-Type: image/png
+
+< ./event-image.png
+--boundary--
