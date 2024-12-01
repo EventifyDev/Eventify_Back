@@ -95,7 +95,7 @@ jobs:
 
   sonar-analysis:
     name: SonarQube Analysis
-    needs: [unit-tests, integration-tests]
+    needs: [unit-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
