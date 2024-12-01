@@ -9,7 +9,6 @@ import { UserService } from '../../user/providers/user.service';
 import { LoginDto } from '../dtos/login.dto';
 import { RegisterDto } from '../dtos/register.dto';
 import * as bcrypt from 'bcryptjs';
-import { log } from 'node:console';
 
 @Injectable()
 export class AuthService {

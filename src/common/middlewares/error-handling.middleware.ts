@@ -18,9 +18,27 @@ export class ErrorHandlingMiddleware implements ExceptionFilter {
     let message = 'Internal server error';
 
     // Handle known errors
+    // Handle known errors
     if (error instanceof HttpException) {
       status = error.getStatus();
-      message = error.message;
+      const errorResponse = error.getResponse();
+
+      // Better handling of validation errors
+      if (typeof errorResponse === 'object') {
+        const errorObj = errorResponse as any;
+        message = errorObj.message;
+
+        // Handle array of validation messages
+        if (Array.isArray(errorObj.message)) {
+          message = errorObj.message[0];
+        }
+        // Handle single message
+        else if (typeof errorObj.message === 'string') {
+          message = errorObj.message;
+        }
+      } else {
+        message = error.message;
+      }
     }
     // Handle MongoDB errors
     else if (error instanceof MongoError) {

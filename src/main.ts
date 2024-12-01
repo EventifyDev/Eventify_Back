@@ -2,7 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { Logger } from '@nestjs/common';
+import { Logger, BadRequestException } from '@nestjs/common';
+import { config } from 'aws-sdk';
 
 async function setupSwagger(app: any) {
   const options = new DocumentBuilder()
@@ -26,19 +27,6 @@ async function setupSwagger(app: any) {
   SwaggerModule.setup('api-docs', app, document);
 }
 
-function setupGlobalPipes(app: any) {
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
-}
-
 function setupCors(app: any) {
   const allowedOrigins = ['http://localhost:5173'];
   app.enableCors({
@@ -55,8 +43,39 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
     setupCors(app);
-    setupGlobalPipes(app);
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+        exceptionFactory: (errors) => {
+          console.log('errors', errors);
+          const messages = errors.map((error) => ({
+            field: error.property,
+            message: Object.values(error.constraints || {}).join(', '),
+            value: error.value,
+          }));
+          return new BadRequestException({
+            statusCode: 400,
+            message: 'Validation failed',
+            errors: messages,
+          });
+        },
+      }),
+    );
     setupSwagger(app);
+
+    // set the aws sdk used to upload files and images to aws s3 bucket
+    config.update({
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+      region: process.env.AWS_REGION,
+    });
 
     app.setGlobalPrefix('api/v1');
 
