@@ -64,7 +64,14 @@ export class ProfileController {
     @Param('id') id: string,
     @Body() updateProfileDto: UpdateProfileDto,
   ): Promise<Profile> {
-    return this.profileService.updateProfile(id, updateProfileDto);
+    const profile = await this.profileService.updateProfile(
+      id,
+      updateProfileDto,
+    );
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+    return profile;
   }
 
   @Delete(':id')

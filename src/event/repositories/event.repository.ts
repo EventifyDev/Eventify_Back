@@ -13,42 +13,7 @@ export class EventRepository implements IEventRepository {
     @InjectModel(Event.name) private readonly eventModel: Model<Event>,
   ) {}
 
-  // Nouvelle méthode pour récupérer tous les événements
-  async findAllEvents(
-    page = 1,
-    limit = 9,
-  ): Promise<{
-    events: Event[];
-    total: number;
-    currentPage: number;
-    totalPages: number;
-  }> {
-    const skip = (page - 1) * limit;
-
-    const total = await this.eventModel.countDocuments();
-
-    const events = await this.eventModel
-      .find()
-      .populate('organizer', 'username email')
-      .skip(skip)
-      .limit(limit)
-      .sort({ date: 1 })
-      .lean()
-      .exec();
-
-    return {
-      events: events as Event[],
-      total,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
-
-  async findAllByOrganizer(
-    userId: string,
-    page = 1,
-    limit = 9,
-  ): Promise<Event[]> {
+  async findAll(userId: string, page = 1, limit = 10): Promise<Event[]> {
     const skip = (page - 1) * limit;
     return (await this.eventModel
       .find({ organizer: userId })
@@ -56,29 +21,6 @@ export class EventRepository implements IEventRepository {
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 })
-      .lean()
-      .exec()) as Event[];
-  }
-
-  // Méthode pour récupérer les événements à venir
-  async findUpcomingEvents(limit = 6): Promise<Event[]> {
-    const now = new Date();
-    return (await this.eventModel
-      .find({ date: { $gte: now } })
-      .populate('organizer', 'username email')
-      .limit(limit)
-      .sort({ date: 1 })
-      .lean()
-      .exec()) as Event[];
-  }
-
-  // Méthode pour récupérer les événements populaires
-  async findPopularEvents(limit = 6): Promise<Event[]> {
-    return (await this.eventModel
-      .find()
-      .populate('organizer', 'username email')
-      .limit(limit)
-      .sort({ views: -1, date: 1 })
       .lean()
       .exec()) as Event[];
   }
@@ -142,25 +84,7 @@ export class EventRepository implements IEventRepository {
       .exec()) as Event[];
   }
 
-  async search(
-    query: string,
-    page = 1,
-    limit = 10,
-  ): Promise<{
-    events: SearchEventResponseDto[];
-    total: number;
-    currentPage: number;
-    totalPages: number;
-  }> {
-    const skip = (page - 1) * limit;
-
-    const total = await this.eventModel.countDocuments({
-      $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-      ],
-    });
-
+  async search(query: string): Promise<SearchEventResponseDto[]> {
     const events = await this.eventModel
       .find({
         $or: [
@@ -176,24 +100,15 @@ export class EventRepository implements IEventRepository {
         location: 1,
         eventType: 1,
         image: 1,
-        organizer: 1,
       })
       .populate('organizer', 'username email')
-      .skip(skip)
-      .limit(limit)
-      .sort({ date: 1 })
+      .sort({ createdAt: -1 })
       .lean()
       .exec();
 
-    return {
-      events: events.map((event) => ({
-        ...event,
-        id: event._id.toString(),
-        eventType: event.eventType,
-      })) as SearchEventResponseDto[],
-      total,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-    };
+    return events.map((event) => ({
+      ...event,
+      id: event._id.toString(),
+    })) as SearchEventResponseDto[];
   }
 }

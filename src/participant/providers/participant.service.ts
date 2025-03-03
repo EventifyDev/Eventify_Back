@@ -57,6 +57,13 @@ export class ParticipantService implements IParticipantService {
     const participants =
       await this.participantRepository.findByEventId(eventId);
 
+<<<<<<< HEAD
+=======
+    if (!participants || participants.length === 0) {
+      throw new NotFoundException('No participants found for this event');
+    }
+
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     return participants;
   }
 

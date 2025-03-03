@@ -1,13 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-<<<<<<< Updated upstream
-import { Logger } from '@nestjs/common';
-=======
 import { config } from 'aws-sdk';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
->>>>>>> Stashed changes
 
 async function setupSwagger(app: any) {
   const options = new DocumentBuilder()
@@ -31,19 +27,6 @@ async function setupSwagger(app: any) {
   SwaggerModule.setup('api-docs', app, document);
 }
 
-function setupGlobalPipes(app: any) {
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
-}
-
 function setupCors(app: any) {
   const allowedOrigins = ['http://localhost:5173'];
   app.enableCors({
@@ -60,9 +43,6 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
     setupCors(app);
-<<<<<<< Updated upstream
-    setupGlobalPipes(app);
-=======
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -72,26 +52,47 @@ async function bootstrap() {
         transformOptions: {
           enableImplicitConversion: true,
         },
+        exceptionFactory: (errors) => {
+          console.log('errors', errors);
+          const messages = errors.map((error) => ({
+            field: error.property,
+            message: Object.values(error.constraints || {}).join(', '),
+            value: error.value,
+          }));
+          return new BadRequestException({
+            statusCode: 400,
+            message: 'Validation failed',
+            errors: messages,
+          });
+        },
       }),
     );
-
+    
     // Apply the global exception filter
     app.useGlobalFilters(new GlobalExceptionFilter());
-
->>>>>>> Stashed changes
+    
     setupSwagger(app);
-
+    
+    // set the aws sdk used to upload files and images to aws s3 bucket
+    config.update({
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+      region: process.env.AWS_REGION,
+    });
+    
     app.setGlobalPrefix('api/v1');
-
+    
     const port = process.env.PORT || 3000;
     await app.listen(port);
-
+    
     logger.log(`🚀 Application is running on: ${await app.getUrl()}`);
     logger.log(
       `📚 Swagger documentation available at: ${await app.getUrl()}/api-docs`,
     );
   } catch (error) {
-    logger.error('❌ Application failed to start:', error);
+    logger.error(`❌ Application failed to start: ${error}`);
     process.exit(1);
   }
 }

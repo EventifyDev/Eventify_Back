@@ -1,7 +1,13 @@
 import {
+<<<<<<< HEAD
   Injectable,
   InternalServerErrorException,
   Logger,
+=======
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
 } from '@nestjs/common';
 import { EventRepository } from '../repositories/event.repository';
 import { CreateEventDto } from '../dtos/create-event.dto';
@@ -10,6 +16,7 @@ import { Event } from '../schemas/event.schema';
 import { IEventService } from '../interfaces/event.interface';
 import { UploadService } from '../../upload/providers/upload.service';
 import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
+<<<<<<< HEAD
 import {
   EventCreationException,
   EventNotFoundException,
@@ -21,11 +28,17 @@ import { EventStatus } from '../../utils/constants';
 export class EventService implements IEventService {
   private readonly logger = new Logger(EventService.name);
 
+=======
+
+@Injectable()
+export class EventService implements IEventService {
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
   constructor(
     private readonly eventRepository: EventRepository,
     private readonly uploadService: UploadService,
   ) {}
 
+<<<<<<< HEAD
   async findAllEvents(page?: number, limit?: number) {
     try {
       return this.eventRepository.findAllEvents(page, limit);
@@ -36,10 +49,14 @@ export class EventService implements IEventService {
   }
 
   async findAllByOrganizer(
+=======
+  async findAll(
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     userId: string,
     page?: number,
     limit?: number,
   ): Promise<Event[]> {
+<<<<<<< HEAD
     try {
       return this.eventRepository.findAllByOrganizer(userId, page, limit);
     } catch (error) {
@@ -111,6 +128,17 @@ export class EventService implements IEventService {
       this.logger.error('Failed to upload image', error);
       throw new ImageUploadException();
     }
+=======
+    const events = await this.eventRepository.findAll(userId, page, limit);
+    if (!events || events.length === 0) {
+      throw new NotFoundException('Events not found');
+    }
+    return events;
+  }
+
+  async findById(id: string): Promise<Event> {
+    return this.eventRepository.findById(id);
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
   }
 
   async create(
@@ -119,18 +147,53 @@ export class EventService implements IEventService {
     image?: Express.Multer.File,
   ): Promise<Event> {
     try {
+<<<<<<< HEAD
       const imageUrl = await this.handleImageUpload(image);
+=======
+      let imageUrl: string;
+
+      if (image) {
+        const uploadResult = await this.uploadService.uploadFile(image);
+        imageUrl = uploadResult.url;
+      }
+      // Handle base64 image from DTO
+      else if (
+        createEventDto.image &&
+        typeof createEventDto.image === 'string' &&
+        createEventDto.image.startsWith('data:image')
+      ) {
+        const buffer = Buffer.from(
+          createEventDto.image.replace(/^data:image\/\w+;base64,/, ''),
+          'base64',
+        );
+        const mimeType = createEventDto.image.split(';')[0].split(':')[1];
+
+        const uploadResult = await this.uploadService.uploadFile({
+          buffer,
+          mimetype: mimeType,
+          originalname: `image-${Date.now()}.${mimeType.split('/')[1]}`,
+        } as Express.Multer.File);
+
+        imageUrl = uploadResult.url;
+      } else {
+        throw new BadRequestException('Image is required');
+      }
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
 
       const eventData = {
         ...createEventDto,
         organizer: organizerId,
         image: imageUrl,
+<<<<<<< HEAD
         status: EventStatus.PENDING,
+=======
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
       };
 
       const createdEvent = await this.eventRepository.create(eventData);
       return createdEvent;
     } catch (error) {
+<<<<<<< HEAD
       this.logger.error('Error creating event:', error);
       if (error instanceof ImageUploadException) {
         throw error;
@@ -138,6 +201,10 @@ export class EventService implements IEventService {
       throw new EventCreationException(
         `Failed to create event: ${error.message}`,
       );
+=======
+      console.error('Error creating event:', error);
+      throw new BadRequestException(`Failed to create event: ${error.message}`);
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     }
   }
 
@@ -148,16 +215,51 @@ export class EventService implements IEventService {
   ): Promise<Event> {
     try {
       const existingEvent = await this.eventRepository.findById(id);
+<<<<<<< HEAD
 
       let imageUrl = existingEvent.image;
       if (image || updateEventDto.image) {
         imageUrl = await this.handleImageUpload(image || updateEventDto.image);
       }
 
+=======
+      if (!existingEvent) {
+        throw new NotFoundException('Event not found');
+      }
+
+      // Handle image update if provided
+      if (image) {
+        const uploadResult = await this.uploadService.uploadFile(image);
+        updateEventDto.image = uploadResult.url;
+      }
+      // Handle base64 image from DTO
+      else if (
+        updateEventDto.image &&
+        typeof updateEventDto.image === 'string' &&
+        updateEventDto.image.startsWith('data:image')
+      ) {
+        const buffer = Buffer.from(
+          updateEventDto.image.replace(/^data:image\/\w+;base64,/, ''),
+          'base64',
+        );
+        const mimeType = updateEventDto.image.split(';')[0].split(':')[1];
+
+        const uploadResult = await this.uploadService.uploadFile({
+          buffer,
+          mimetype: mimeType,
+          originalname: `image-${Date.now()}.${mimeType.split('/')[1]}`,
+        } as Express.Multer.File);
+
+        updateEventDto.image = uploadResult.url;
+      }
+
+      // Ensure date is properly converted
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
       if (updateEventDto.date) {
         updateEventDto.date = new Date(updateEventDto.date);
       }
 
+<<<<<<< HEAD
       const updatedEventData = {
         ...updateEventDto,
         image: imageUrl,
@@ -173,10 +275,17 @@ export class EventService implements IEventService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to update event');
+=======
+      return this.eventRepository.update(id, updateEventDto);
+    } catch (error) {
+      console.error('Error updating event:', error);
+      throw new BadRequestException(`Failed to update event: ${error.message}`);
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     }
   }
 
   async delete(id: string): Promise<boolean> {
+<<<<<<< HEAD
     try {
       return this.eventRepository.delete(id);
     } catch (error) {
@@ -243,5 +352,16 @@ export class EventService implements IEventService {
       }
       throw new InternalServerErrorException('Failed to update event status');
     }
+=======
+    return this.eventRepository.delete(id);
+  }
+
+  async findByOrganizerId(organizerId: string): Promise<Event[]> {
+    return this.eventRepository.findByOrganizerId(organizerId);
+  }
+
+  async search(query: string): Promise<SearchEventResponseDto[]> {
+    return this.eventRepository.search(query);
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
   }
 }

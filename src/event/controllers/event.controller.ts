@@ -11,7 +11,10 @@ import {
   Request,
   UseInterceptors,
   UploadedFile,
+<<<<<<< HEAD
   UseFilters,
+=======
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -31,11 +34,17 @@ import { Event } from '../schemas/event.schema';
 import { Participant } from '../../participant/schemas/participant.schema';
 import { ParticipantService } from '../../participant/providers/participant.service';
 import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
+<<<<<<< HEAD
 import { HttpExceptionFilter } from '../../common/filters/http-exception.filter';
 
 @ApiTags('Events')
 @Controller('events')
 @UseFilters(HttpExceptionFilter)
+=======
+
+@ApiTags('Events')
+@Controller('events')
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
 export class EventController {
   constructor(
     private readonly eventService: EventService,
@@ -52,6 +61,7 @@ export class EventController {
   })
   async search(
     @Query('query') query: string,
+<<<<<<< HEAD
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ): Promise<{
@@ -64,12 +74,20 @@ export class EventController {
   }
 
   @Get('')
+=======
+  ): Promise<SearchEventResponseDto[]> {
+    return this.eventService.search(query);
+  }
+
+  @Get('user/:userId')
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all events with pagination' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'List of events', type: [Event] })
+<<<<<<< HEAD
   async findAllEvents(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -118,11 +136,18 @@ export class EventController {
     type: [Event],
   })
   async findAllByOrganizer(
+=======
+  async findAll(
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     @Param('userId') userId: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ): Promise<Event[]> {
+<<<<<<< HEAD
     return this.eventService.findAllByOrganizer(userId, page, limit);
+=======
+    return this.eventService.findAll(userId, page, limit);
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
   }
 
   @Get(':id')
@@ -131,7 +156,13 @@ export class EventController {
   @ApiResponse({ status: 200, description: 'Event found', type: Event })
   @ApiResponse({ status: 404, description: 'Event not found' })
   async findById(@Param('id') id: string): Promise<Event> {
+<<<<<<< HEAD
     const event = await this.eventService.findById(id);
+=======
+    console.log('id', id);
+    const event = await this.eventService.findById(id);
+    console.log('event', event);
+>>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     return event;
   }
 

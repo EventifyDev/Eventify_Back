@@ -1,9 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { Document } from 'mongoose';
+import mongoose, { Document } from 'mongoose';;
+
 import { User } from '../../user/schemas/user.schema';
 import { ApiProperty } from '@nestjs/swagger';
-import { Category } from '../../categories/schemas/category.schema';
-import { EventStatus } from '../../utils/constants';
 
 export type EventDocument = Event & Document;
 
@@ -93,32 +92,18 @@ export class Event {
   location: string;
 
   @ApiProperty({
-    type: String,
-    description: 'Category of the event',
+    enum: ['SPORT', 'CULTURAL', 'PROFESSIONAL', 'SOCIAL', 'OTHER'],
+    description: 'Type of the event',
     example: 'CULTURAL',
-    required: true,
-  })
-  @Prop({
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Category',
-    required: true,
-  })
-  category: Category;
-
-  @ApiProperty({
-    type: Number,
-    minimum: 0,
-    description: 'Starting price of the event',
-    example: 10,
+    default: 'OTHER',
     required: true,
   })
   @Prop({
     required: true,
-    type: Number,
-    min: 0,
-    default: 0,
+    enum: ['SPORT', 'CULTURAL', 'PROFESSIONAL', 'SOCIAL', 'OTHER'],
+    default: 'OTHER',
   })
-  price: number;
+  eventType: string;
 
   @ApiProperty({
     type: String,
@@ -131,62 +116,6 @@ export class Event {
     type: String,
   })
   image: string;
-
-  @ApiProperty({
-    enum: EventStatus,
-    description: 'Current status of the event',
-    example: EventStatus.PENDING,
-    default: EventStatus.PENDING,
-  })
-  @Prop({
-    type: String,
-    enum: EventStatus,
-    default: EventStatus.PENDING,
-    required: true,
-  })
-  status: EventStatus;
-
-  @ApiProperty({
-    type: String,
-    description: 'Reason for rejection (if applicable)',
-    required: false,
-  })
-  @Prop({
-    type: String,
-    trim: true,
-  })
-  rejectionReason?: string;
-
-  @ApiProperty({
-    type: Date,
-    description: 'Date when the event was approved/rejected',
-    required: false,
-  })
-  @Prop({
-    type: Date,
-  })
-  statusUpdatedAt?: Date;
-
-  @ApiProperty({
-    type: String,
-    description: 'ID of the admin who processed the event',
-    required: false,
-  })
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User' })
-  processedBy?: User;
-
-  @ApiProperty({
-    type: String,
-    description: 'Type of the event',
-    example: 'Conference',
-    required: true,
-  })
-  @Prop({
-    required: true,
-    type: String,
-    trim: true,
-  })
-  eventType: string;
 }
 
 export const EventSchema = SchemaFactory.createForClass(Event);
