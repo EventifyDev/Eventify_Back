@@ -54,7 +54,7 @@ export class UserController {
   })
   @ApiResponse({ status: 404, description: 'User not found.' })
   async getUserById(@Param('id') id: string): Promise<User> {
-    const user = await this.userService.getUserById(id);
+    const user = await this.userService.getUser({ _id: id });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -73,7 +73,7 @@ export class UserController {
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<User> {
-    return this.userService.updateUser(id, updateUserDto);
+    return this.userService.updateUser({ _id: id }, updateUserDto);
   }
 
   @Delete(':id')

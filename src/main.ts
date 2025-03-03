@@ -1,8 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+<<<<<<< Updated upstream
 import { Logger } from '@nestjs/common';
+=======
+import { config } from 'aws-sdk';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+>>>>>>> Stashed changes
 
 async function setupSwagger(app: any) {
   const options = new DocumentBuilder()
@@ -55,7 +60,25 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
     setupCors(app);
+<<<<<<< Updated upstream
     setupGlobalPipes(app);
+=======
+
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+      }),
+    );
+
+    // Apply the global exception filter
+    app.useGlobalFilters(new GlobalExceptionFilter());
+
+>>>>>>> Stashed changes
     setupSwagger(app);
 
     app.setGlobalPrefix('api/v1');

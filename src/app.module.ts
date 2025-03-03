@@ -9,6 +9,13 @@ import { AuthModule } from './auth/auth.module';
 import { APP_FILTER } from '@nestjs/core';
 import { ErrorHandlingMiddleware } from './common/middlewares/error-handling.middleware';
 import { JwtAuthMiddleware } from './common/middlewares/jwt-auth.middleware';
+<<<<<<< Updated upstream
+=======
+import { EventModule } from './event/event.module';
+import { UploadModule } from './upload/upload.module';
+import { ParticipantModule } from './participant/participant.module';
+import { CategoryModule } from './categories/category.module';
+>>>>>>> Stashed changes
 
 @Module({
   imports: [
@@ -17,6 +24,13 @@ import { JwtAuthMiddleware } from './common/middlewares/jwt-auth.middleware';
     UserModule,
     ProfileModule,
     AuthModule,
+<<<<<<< Updated upstream
+=======
+    EventModule,
+    UploadModule,
+    ParticipantModule,
+    CategoryModule,
+>>>>>>> Stashed changes
   ],
   controllers: [AppController],
   providers: [
@@ -31,7 +45,12 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(JwtAuthMiddleware)
-      .exclude('auth/login', 'auth/register')
+      .exclude(
+        'auth/login',
+        'auth/register',
+        'auth/verify-otp',
+        'auth/resend-otp',
+      )
       .forRoutes('*');
   }
 }

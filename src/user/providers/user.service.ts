@@ -10,6 +10,7 @@ import { User } from '../schemas/user.schema';
 import { CreateUserDto } from '../dtos/create-user.dto';
 import { UpdateUserDto } from '../dtos/update-user.dto';
 import * as bcrypt from 'bcryptjs';
+import { FilterQuery } from 'mongoose';
 
 @Injectable()
 export class UserService implements IUserService {
@@ -18,16 +19,16 @@ export class UserService implements IUserService {
   ) {}
 
   async createUser(userDto: CreateUserDto): Promise<User> {
-    const existingEmail = await this.userRepository.findUserByEmail(
-      userDto.email.toLowerCase(),
-    );
+    const existingEmail = await this.userRepository.findUser({
+      email: userDto.email.toLowerCase(),
+    });
     if (existingEmail) {
       throw new ConflictException('Email already exists');
     }
 
-    const existingUsername = await this.userRepository.findUserByUsername(
-      userDto.username.toLowerCase(),
-    );
+    const existingUsername = await this.userRepository.findUser({
+      username: userDto.username.toLowerCase(),
+    });
     if (existingUsername) {
       throw new ConflictException('Username already exists');
     }
@@ -47,24 +48,23 @@ export class UserService implements IUserService {
     return this.userRepository.findAllUsers();
   }
 
-  async getUserById(id: string): Promise<User | null> {
-    const user = await this.userRepository.findUserById(id);
+  async getUser(query: FilterQuery<User>): Promise<User | null> {
+    const user = await this.userRepository.findUser(query);
     if (!user) {
       throw new NotFoundException('User not found');
     }
     return user;
   }
 
-  async getUserByEmail(email: string): Promise<User | null> {
-    const user = await this.userRepository.findUserByEmail(email);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return user;
+  async findUserByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findUser({ email: email.toLowerCase() });
   }
 
-  async updateUser(id: string, userDto: UpdateUserDto): Promise<User | null> {
-    const user = await this.userRepository.updateUser(id, userDto);
+  async updateUser(
+    query: FilterQuery<User>,
+    data: UpdateUserDto,
+  ): Promise<User | null> {
+    const user = await this.userRepository.updateUser(query, data);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -72,7 +72,7 @@ export class UserService implements IUserService {
   }
 
   async deleteUser(id: string): Promise<void> {
-    const user = await this.userRepository.findUserById(id);
+    const user = await this.userRepository.findUser({ _id: id });
     if (!user) {
       throw new NotFoundException('User not found');
     }
