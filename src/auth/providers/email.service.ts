@@ -6,6 +6,8 @@ import { getRegistrationTemplate } from '../templates/registration.template';
 import { getPasswordResetTemplate } from '../templates/password-reset.template';
 import { getOtpVerificationTemplate } from '../templates/email-verification.template';
 import { getSecurityAlertTemplate } from '../templates/security-alert.template';
+import { getPasswordChangeConfirmationTemplate } from '../templates/password-change-confirmation';
+import { getDeviceVerificationTemplate } from '../../auth/templates/device-verification.template';
 
 @Injectable()
 export class EmailService {
@@ -122,6 +124,58 @@ export class EmailService {
         `Failed to send security alert email to ${user.email}: ${error.message}`,
       );
       throw new Error(`Error sending security alert email: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send confirmation email after password change
+   */
+  async sendPasswordChangeConfirmationEmail(user: User): Promise<void> {
+    const mailOptions = {
+      from: `"Eventify Security" <${this.configService.get<string>('MAIL_FROM')}>`,
+      to: user.email,
+      subject: 'Your Password Has Been Changed',
+      html: getPasswordChangeConfirmationTemplate(user),
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(
+        `Password change confirmation email sent to ${user.email}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send confirmation email to ${user.email}: ${error.message}`,
+      );
+      throw new Error(`Error sending confirmation email: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send device verification email to user
+   */
+  async sendDeviceVerificationEmail(
+    user: User,
+    otpCode: string,
+    deviceInfo: { browser: string; os: string; ip: string },
+  ): Promise<void> {
+    const mailOptions = {
+      from: `"Eventify Security" <${this.configService.get<string>('MAIL_FROM')}>`,
+      to: user.email,
+      subject: 'Verify Your Device - Eventify Security Alert',
+      html: getDeviceVerificationTemplate(user, otpCode, deviceInfo),
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      this.logger.debug(`Device verification email sent to ${user.email}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send device verification email to ${user.email}: ${error.message}`,
+      );
+      throw new Error(
+        `Error sending device verification email: ${error.message}`,
+      );
     }
   }
 }

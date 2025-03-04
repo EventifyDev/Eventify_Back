@@ -44,6 +44,7 @@ export class AppModule implements NestModule {
         'auth/register',
         'auth/verify-otp',
         'auth/resend-otp',
+        '/auth/verify-device',
       )
       .forRoutes('*');
   }

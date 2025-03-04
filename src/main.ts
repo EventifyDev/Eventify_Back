@@ -67,12 +67,12 @@ async function bootstrap() {
         },
       }),
     );
-    
+
     // Apply the global exception filter
     app.useGlobalFilters(new GlobalExceptionFilter());
-    
+
     setupSwagger(app);
-    
+
     // set the aws sdk used to upload files and images to aws s3 bucket
     config.update({
       credentials: {
@@ -81,12 +81,12 @@ async function bootstrap() {
       },
       region: process.env.AWS_REGION,
     });
-    
+
     app.setGlobalPrefix('api/v1');
-    
+
     const port = process.env.PORT || 3000;
     await app.listen(port);
-    
+
     logger.log(`🚀 Application is running on: ${await app.getUrl()}`);
     logger.log(
       `📚 Swagger documentation available at: ${await app.getUrl()}/api-docs`,

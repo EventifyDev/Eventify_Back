@@ -30,15 +30,8 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/swagger": "^8.0.7",
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
     "@types/nodemailer": "^6.4.17",
     "aws-sdk": "^2.1692.0",
->>>>>>> Stashed changes
-=======
-    "aws-sdk": "^2.1692.0",
->>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",

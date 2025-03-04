@@ -60,6 +60,19 @@ export class UserService implements IUserService {
     return this.userRepository.findUser({ email: email.toLowerCase() });
   }
 
+  async findUserByEmailWithPassword(email: string): Promise<User | null> {
+    return this.userRepository.findUserWithPassword({
+      email: email.toLowerCase(),
+    });
+  }
+
+  async addVerifiedDevice(
+    userId: string,
+    deviceFingerprint: string,
+  ): Promise<void> {
+    await this.userRepository.addVerifiedDevice(userId, deviceFingerprint);
+  }
+
   async updateUser(
     query: FilterQuery<User>,
     data: UpdateUserDto,

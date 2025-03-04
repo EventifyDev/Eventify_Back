@@ -45,7 +45,7 @@ export function getOtpVerificationTemplate(
             </table>
             
             <p style="margin: 0 0 15px 0; font-size: 14px; line-height: 1.6; color: #777777; text-align: center;">
-              This code will expire in 15 minutes.
+              This code will expire in 1 minute.
             </p>
             
             <p style="margin: 20px 0 0 0; font-size: 14px; line-height: 1.6; color: #777777;">

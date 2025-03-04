@@ -4,7 +4,6 @@ import { ApiProperty } from '@nestjs/swagger';
 
 @Schema({ timestamps: true })
 export class User extends Document {
-
   @ApiProperty({
     description: 'Unique username',
     example: 'johndoe',
@@ -50,6 +49,18 @@ export class User extends Document {
 
   @Prop()
   otpCreatedAt?: Date;
+
+  @Prop({ type: [String], default: [] })
+  verifiedDevices: string[];
+
+  @Prop({ type: String })
+  deviceVerificationOtp: string;
+
+  @Prop({ type: Date })
+  deviceVerificationOtpCreatedAt: Date;
+
+  @Prop({ type: String })
+  pendingDeviceFingerprint: string;
 
   @Prop()
   createdAt: Date;

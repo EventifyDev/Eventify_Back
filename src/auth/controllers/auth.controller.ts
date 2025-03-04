@@ -18,13 +18,15 @@ import {
 } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthService } from '../providers/auth.service';
-import { LocalAuthGuard } from '../guards/local-auth.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtRefreshAuthGuard } from '../guards/jwt-refresh-auth.guard';
 import { RegisterDto } from '../dtos/register.dto';
 import { LoginDto } from '../dtos/login.dto';
 import { VerifyOtpDto } from '../dtos/verify-otp.dto';
 import { User } from '../../common/decorators/user.decorator';
+import { ResetPasswordDto } from '../dtos/reset-password.dto';
+import { ForgotPasswordDto } from '../dtos/forgot-password.dto';
+import { VerifyDeviceDto } from '../dtos/verify-device.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -64,23 +66,17 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(LocalAuthGuard)
   @ApiOperation({ summary: 'User login' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'User successfully logged in.',
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Invalid credentials.',
-  })
+  @ApiResponse({ status: 200, description: 'User logged in successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
   ) {
     this.logger.log(`Login attempt with email: ${loginDto.email}`);
     try {
-      const result = await this.authService.login(loginDto, res);
+      const result = await this.authService.login(loginDto, res, req);
       this.logger.log(`User logged in successfully: ${loginDto.email}`);
       return result;
     } catch (error) {
@@ -114,6 +110,94 @@ export class AuthController {
       success: true,
       message: 'Verification code sent successfully. Please check your email.',
     };
+  }
+
+  @Post('verify-device')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify login from new device with OTP code' })
+  @ApiResponse({ status: 200, description: 'Device verified successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid verification code' })
+  @ApiResponse({ status: 400, description: 'No pending device verification' })
+  async verifyDevice(
+    @Body() verifyDeviceDto: VerifyDeviceDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    this.logger.log(
+      `Device verification attempt for email: ${verifyDeviceDto.email}`,
+    );
+    try {
+      const result = await this.authService.verifyDevice(verifyDeviceDto, res);
+
+      this.logger.log(
+        `Device verified successfully for: ${verifyDeviceDto.email}`,
+      );
+      return {
+        success: true,
+        message: 'Device verified successfully',
+        ...result,
+      };
+    } catch (error) {
+      this.logger.error(`Device verification failed: ${error.message}`);
+      throw error;
+    }
+  }
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request a password reset' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Password reset email sent if email exists.',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid email format.',
+  })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    this.logger.log(
+      `Password reset requested for email: ${forgotPasswordDto.email}`,
+    );
+    try {
+      const result = await this.authService.forgotPassword(
+        forgotPasswordDto.email,
+      );
+      this.logger.log(
+        `Password reset email sent for: ${forgotPasswordDto.email}`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(`Password reset request failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password with token' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Password successfully reset.',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid or expired token.',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid password format.',
+  })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    this.logger.log('Password reset attempt');
+    try {
+      const result = await this.authService.resetPassword(
+        resetPasswordDto.token,
+        resetPasswordDto.newPassword,
+      );
+      this.logger.log('Password reset successful');
+      return result;
+    } catch (error) {
+      this.logger.error(`Password reset failed: ${error.message}`);
+      throw error;
+    }
   }
 
   @Get('profile')

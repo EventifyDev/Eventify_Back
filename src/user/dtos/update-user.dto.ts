@@ -30,4 +30,13 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
     example: '2023-07-21T10:30:00Z',
   })
   otpCreatedAt?: Date;
+
+  @IsOptional()
+  deviceVerificationOtp?: string | null;
+
+  @IsOptional()
+  deviceVerificationOtpCreatedAt?: Date | null;
+
+  @IsOptional()
+  pendingDeviceFingerprint?: string | null;
 }

@@ -13,11 +13,12 @@ import { EmailService } from './email.service';
 import { LoginDto } from '../dtos/login.dto';
 import { RegisterDto } from '../dtos/register.dto';
 import * as bcrypt from 'bcryptjs';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { TokenPayload } from '../interfaces/token-payload.interface';
 import { User } from '../../user/schemas/user.schema';
 import * as crypto from 'crypto';
+import { VerifyDeviceDto } from '../dtos/verify-device.dto';
 
 @Injectable()
 export class AuthService {
@@ -34,7 +35,7 @@ export class AuthService {
 
   async validateUser(email: string, password: string): Promise<any> {
     this.logger.debug(`Attempting to validate user: ${email}`);
-    const user = await this.userService.findUserByEmail(email);
+    const user = await this.userService.findUserByEmailWithPassword(email);
     this.logger.debug(`User found: ${!!user}`);
 
     if (!user?.password) {
@@ -57,15 +58,80 @@ export class AuthService {
     return null;
   }
 
-  async login(loginDto: LoginDto, res: Response) {
+  async login(loginDto: LoginDto, res: Response, req: Request) {
     this.logger.debug(`Login attempt for email: ${loginDto.email}`);
 
+    // Validate user credentials
     const user = await this.validateUser(loginDto.email, loginDto.password);
     if (!user) {
       this.logger.warn(`Login failed for email: ${loginDto.email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Generate a device fingerprint from the request
+    const deviceFingerprint = this.generateDeviceFingerprint(req);
+    this.logger.debug(
+      `Device fingerprint generated for login: ${deviceFingerprint.substring(0, 8)}...`,
+    );
+
+    // Check if this device has been previously verified
+    const isKnownDevice = await this.checkKnownDevice(
+      user._id,
+      deviceFingerprint,
+    );
+
+    // If device is already verified, proceed with normal login
+    if (isKnownDevice) {
+      this.logger.debug(
+        `Known device for userId: ${user._id}, proceeding with login`,
+      );
+      return this.completeLogin(user, res);
+    }
+
+    // For new devices, generate and send OTP
+    this.logger.debug(
+      `New device detected for userId: ${user._id}, requiring verification`,
+    );
+
+    // Generate OTP code
+    const otpCode = this.generateDeterministicOtp(
+      user._id.toString(),
+      user.email,
+      Date.now(), // Use current time to ensure uniqueness
+    );
+
+    // Store verification data
+    await this.userService.updateUser(user._id, {
+      deviceVerificationOtp: otpCode,
+      deviceVerificationOtpCreatedAt: new Date(),
+      pendingDeviceFingerprint: deviceFingerprint,
+    });
+
+    // Send verification email with device info
+    try {
+      const deviceInfo = this.getDeviceInfo(req);
+      await this.emailService.sendDeviceVerificationEmail(
+        user,
+        otpCode,
+        deviceInfo,
+      );
+      this.logger.debug(`Device verification email sent to ${user.email}`);
+    } catch (emailError) {
+      this.logger.error(
+        `Failed to send device verification email: ${emailError.message}`,
+        emailError.stack,
+      );
+    }
+
+    // Return partial response indicating verification needed
+    return {
+      requiresDeviceVerification: true,
+      email: user.email,
+      message: 'Device verification required',
+    };
+  }
+
+  private async completeLogin(user: any, res: Response) {
     const { accessToken, refreshToken } = await this.generateTokens(user);
     this.logger.debug(`Tokens generated for userId: ${user._id}`);
 
@@ -85,6 +151,54 @@ export class AuthService {
       email: user.email,
     };
   }
+  private generateDeviceFingerprint(req: Request): string {
+    const userAgent = req.headers['user-agent'] || '';
+    const ip = req.ip || '';
+    const acceptLanguage = req.headers['accept-language'] || '';
+
+    const deviceData = `${userAgent}:${ip}:${acceptLanguage}`;
+    return crypto.createHash('sha256').update(deviceData).digest('hex');
+  }
+
+  private async checkKnownDevice(
+    userId: string,
+    deviceFingerprint: string,
+  ): Promise<boolean> {
+    const user = await this.userService.getUser({ _id: userId });
+    if (!user || !user.verifiedDevices) {
+      return false;
+    }
+
+    return user.verifiedDevices.includes(deviceFingerprint);
+  }
+
+  private getDeviceInfo(req: Request): {
+    browser: string;
+    os: string;
+    ip: string;
+  } {
+    const userAgent = req.headers['user-agent'] || '';
+
+    let browser = 'Unknown browser';
+    if (userAgent.includes('Chrome')) browser = 'Chrome';
+    else if (userAgent.includes('Firefox')) browser = 'Firefox';
+    else if (userAgent.includes('Safari')) browser = 'Safari';
+    else if (userAgent.includes('Edge')) browser = 'Edge';
+
+    let os = 'Unknown OS';
+    if (userAgent.includes('Windows')) os = 'Windows';
+    else if (userAgent.includes('Mac')) os = 'Mac OS';
+    else if (userAgent.includes('Linux')) os = 'Linux';
+    else if (userAgent.includes('Android')) os = 'Android';
+    else if (userAgent.includes('iPhone') || userAgent.includes('iPad'))
+      os = 'iOS';
+
+    return {
+      browser,
+      os,
+      ip: req.ip || 'Unknown IP',
+    };
+  }
 
   async register(registerDto: RegisterDto): Promise<Omit<User, 'password'>> {
     this.logger.debug(`Registration attempt for email: ${registerDto.email}`);
@@ -102,6 +216,7 @@ export class AuthService {
 
       await this.userService.updateUser(user._id, {
         isEmailVerified: false,
+        otpCreatedAt: new Date(),
       });
 
       try {
@@ -234,24 +349,37 @@ export class AuthService {
         throw new NotFoundException('User not found');
       }
 
-      // Check if email is already verified
+      // Check if email is already verified - MODIFIED THIS PART
       if (user.isEmailVerified) {
         this.logger.debug(`Email already verified for user: ${email}`);
-        return true;
+        throw new BadRequestException('Email is already verified');
       }
 
-      // Check if OTP has expired (15 minutes)
-      if (user.otpCreatedAt) {
-        const otpExpirationTime = 15 * 60 * 1000;
-        const currentTime = new Date().getTime();
-        const otpCreatedTime = new Date(user.otpCreatedAt).getTime();
+      // Ensure OTP creation time exists
+      if (!user.otpCreatedAt) {
+        this.logger.warn(`No OTP timestamp found for user: ${email}`);
+        throw new UnauthorizedException(
+          'Verification code not found. Please request a new one.',
+        );
+      }
 
-        if (currentTime - otpCreatedTime > otpExpirationTime) {
-          this.logger.warn(`OTP expired for user: ${email}`);
-          throw new UnauthorizedException(
-            'Verification code has expired. Please request a new one.',
-          );
-        }
+      // Check if OTP has expired (1 minute)
+      const otpExpirationTime = 1 * 60 * 1000;
+      const currentTime = new Date().getTime();
+      const otpCreatedTime = new Date(user.otpCreatedAt).getTime();
+
+      // Log the expiration check details for debugging
+      this.logger.debug(
+        `OTP time check - Current: ${currentTime}, Created: ${otpCreatedTime}, Diff: ${
+          currentTime - otpCreatedTime
+        }, Expiration: ${otpExpirationTime}`,
+      );
+
+      if (currentTime - otpCreatedTime > otpExpirationTime) {
+        this.logger.warn(`OTP expired for user: ${email}`);
+        throw new UnauthorizedException(
+          'Verification code has expired. Please request a new one.',
+        );
       }
 
       // Generate expected OTP using deterministic method
@@ -295,7 +423,8 @@ export class AuthService {
     } catch (error) {
       if (
         error instanceof UnauthorizedException ||
-        error instanceof NotFoundException
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
       ) {
         throw error;
       }
@@ -307,6 +436,57 @@ export class AuthService {
       );
       throw new UnauthorizedException('Invalid or expired verification code');
     }
+  }
+
+  async verifyDevice(
+    verifyDeviceDto: VerifyDeviceDto,
+    res: Response,
+  ): Promise<any> {
+    const { email, otpCode } = verifyDeviceDto;
+    this.logger.debug(`Device verification attempt for email: ${email}`);
+
+    const user = await this.userService.findUserByEmail(email);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.deviceVerificationOtp || !user.pendingDeviceFingerprint) {
+      throw new BadRequestException('No pending device verification');
+    }
+
+    // Check OTP expiration (10 minutes)
+    if (user.deviceVerificationOtpCreatedAt) {
+      const expirationTime = 10 * 60 * 1000;
+      const currentTime = new Date().getTime();
+      const createdTime = new Date(
+        user.deviceVerificationOtpCreatedAt,
+      ).getTime();
+
+      if (currentTime - createdTime > expirationTime) {
+        throw new UnauthorizedException('Verification code expired');
+      }
+    }
+
+    // Validate OTP
+    if (otpCode !== user.deviceVerificationOtp) {
+      throw new UnauthorizedException('Invalid verification code');
+    }
+
+    // Add device to verified devices
+    await this.userService.addVerifiedDevice(
+      user._id.toString(),
+      user.pendingDeviceFingerprint,
+    );
+
+    // Clear verification data
+    await this.userService.updateUser(user._id, {
+      deviceVerificationOtp: null,
+      deviceVerificationOtpCreatedAt: null,
+      pendingDeviceFingerprint: null,
+    });
+
+    // Complete login
+    return this.completeLogin(user, res);
   }
 
   async resendOtp(email: string): Promise<boolean> {
@@ -371,6 +551,129 @@ export class AuthService {
       throw new InternalServerErrorException(
         'Failed to resend verification code',
       );
+    }
+  }
+
+  async forgotPassword(email: string): Promise<{ success: boolean }> {
+    this.logger.debug(`Password reset requested for email: ${email}`);
+
+    try {
+      const user = await this.userService.findUserByEmail(email);
+      if (!user) {
+        // Return success even if user doesn't exist (security best practice)
+        this.logger.debug(`User not found for password reset: ${email}`);
+        return { success: true };
+      }
+
+      // Create a JWT token with short expiration (2 hours)
+      const resetToken = this.jwtService.sign(
+        {
+          sub: user._id,
+          email: user.email,
+          type: 'password-reset',
+        },
+        {
+          secret: this.configService.getOrThrow('JWT_ACCESS_TOKEN_SECRET'),
+          expiresIn: '2h',
+        },
+      );
+
+      try {
+        await this.emailService.sendPasswordResetEmail(user, resetToken);
+        this.logger.debug(`Password reset email sent to ${email}`);
+      } catch (emailError) {
+        this.logger.error(
+          `Failed to send password reset email: ${emailError.message}`,
+          emailError.stack,
+        );
+        throw new InternalServerErrorException(
+          'Failed to send password reset email',
+        );
+      }
+
+      return { success: true };
+    } catch (error) {
+      if (error instanceof InternalServerErrorException) {
+        throw error;
+      }
+
+      this.logger.error(
+        `Password reset request failed: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to process password reset request',
+      );
+    }
+  }
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+  ): Promise<{ success: boolean }> {
+    this.logger.debug('Password reset attempt');
+
+    try {
+      // Verify the JWT token
+      let payload: any;
+      try {
+        payload = await this.jwtService.verifyAsync(token, {
+          secret: this.configService.getOrThrow('JWT_ACCESS_TOKEN_SECRET'),
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Invalid or expired password reset token: ${error.message}`,
+        );
+        throw new UnauthorizedException(
+          'Password reset token is invalid or has expired',
+        );
+      }
+
+      // Check if this is a password reset token
+      if (payload.type !== 'password-reset') {
+        this.logger.warn('Invalid token type for password reset');
+        throw new UnauthorizedException('Invalid token type');
+      }
+
+      // Find the user
+      const user = await this.userService.getUser({ _id: payload.sub });
+      if (!user) {
+        this.logger.warn(`User not found for userId: ${payload.sub}`);
+        throw new UnauthorizedException('User not found');
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update user password and invalidate all existing sessions
+      await this.userService.updateUser(user._id, {
+        password: hashedPassword,
+        refreshToken: null,
+      });
+
+      this.logger.debug(`Password successfully reset for userId: ${user._id}`);
+
+      // Send confirmation email
+      try {
+        await this.emailService.sendPasswordChangeConfirmationEmail(user);
+        this.logger.debug(
+          `Password change confirmation email sent to ${user.email}`,
+        );
+      } catch (emailError) {
+        this.logger.error(
+          `Failed to send confirmation email: ${emailError.message}`,
+          emailError.stack,
+        );
+      }
+
+      return { success: true };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      this.logger.error(`Password reset failed: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to reset password');
     }
   }
 

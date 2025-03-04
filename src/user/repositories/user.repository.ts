@@ -27,6 +27,31 @@ export class UserRepository implements IUserRepository {
     }
   }
 
+  async findUserWithPassword(query: FilterQuery<User>): Promise<User | null> {
+    try {
+      const user = await this.userModel.findOne(query).select('+password');
+
+      if (!user) {
+        return null;
+      }
+
+      return user.toObject();
+    } catch (error) {
+      throw new Error(`Error finding user with password: ${error.message}`);
+    }
+  }
+
+  async addVerifiedDevice(
+    userId: string,
+    deviceFingerprint: string,
+  ): Promise<void> {
+    await this.userModel
+      .findByIdAndUpdate(userId, {
+        $addToSet: { verifiedDevices: deviceFingerprint },
+      })
+      .exec();
+  }
+
   async findAllUsers(): Promise<User[]> {
     return this.userModel.find({});
   }

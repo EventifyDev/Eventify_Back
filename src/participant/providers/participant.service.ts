@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { IParticipantService } from '../interfaces/participant.interface';
 import { IParticipantRepository } from '../interfaces/participant.repository.interface';
@@ -9,7 +11,6 @@ import { EventService } from '../../event/providers/event.service';
 import { CreateParticipantDto } from '../dtos/create-participant.dto';
 import { UpdateParticipantDto } from '../dtos/update-participant.dto';
 import { Participant } from '../schemas/participant.schema';
-import { Inject, forwardRef } from '@nestjs/common';
 
 @Injectable()
 export class ParticipantService implements IParticipantService {
@@ -57,13 +58,10 @@ export class ParticipantService implements IParticipantService {
     const participants =
       await this.participantRepository.findByEventId(eventId);
 
-<<<<<<< HEAD
-=======
     if (!participants || participants.length === 0) {
       throw new NotFoundException('No participants found for this event');
     }
 
->>>>>>> 9c4cbafcb081eb83d78a63f740b275a5f86832b1
     return participants;
   }
 
