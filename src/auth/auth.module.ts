@@ -3,6 +3,7 @@ import { AuthService } from '@/auth/providers/auth.service';
 import { LocalStrategy } from '@/auth/strategies/local.strategy';
 import { JwtStrategy } from '@/auth/strategies/jwt.strategy';
 import { JwtRefreshStrategy } from '@/auth/strategies/jwt-refresh.strategy';
+import { GoogleStrategy } from '@/auth/strategies/google.strategy';
 import { UserModule } from '@/user/user.module';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
@@ -33,6 +34,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     LocalStrategy,
     JwtStrategy,
     JwtRefreshStrategy,
+    GoogleStrategy,
     EmailService,
     MailerConfig,
   ],

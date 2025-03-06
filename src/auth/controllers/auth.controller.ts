@@ -17,6 +17,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Response, Request } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../providers/auth.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtRefreshAuthGuard } from '../guards/jwt-refresh-auth.guard';
@@ -27,13 +28,18 @@ import { User } from '../../common/decorators/user.decorator';
 import { ResetPasswordDto } from '../dtos/reset-password.dto';
 import { ForgotPasswordDto } from '../dtos/forgot-password.dto';
 import { VerifyDeviceDto } from '../dtos/verify-device.dto';
+import { GoogleAuthGuard } from '../guards/google-auth.guard';
+import { GoogleAuthDto } from '../dtos/google-auth.dto';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {
     this.logger.log('AuthController initialized');
   }
 
@@ -82,6 +88,49 @@ export class AuthController {
     } catch (error) {
       this.logger.error(`Login failed: ${error.message}`);
       throw error;
+    }
+  }
+
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Initiate Google OAuth login flow' })
+  @ApiResponse({
+    status: 200,
+    description: 'Redirected to Google authentication page',
+  })
+  async googleAuth() {}
+
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: 'Google OAuth callback' })
+  @ApiResponse({
+    status: 200,
+    description: 'Authentication successful',
+  })
+  async googleAuthRedirect(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const googleUser = req.user as GoogleAuthDto;
+    this.logger.log(
+      `Google auth callback received for user: ${googleUser.email}`,
+    );
+    try {
+      const result = await this.authService.googleLogin(
+        req.user as GoogleAuthDto,
+        res,
+        req,
+      );
+
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+      return res.redirect(
+        `${frontendUrl}/auth/social-login?accessToken=${result.accessToken}&refreshToken=${result.refreshToken}`,
+      );
+    } catch (error) {
+      this.logger.error(`Google authentication failed: ${error.message}`);
+
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+      return res.redirect(`${frontendUrl}/auth/login?error=google_auth_failed`);
     }
   }
 

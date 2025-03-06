@@ -19,6 +19,7 @@ import { TokenPayload } from '../interfaces/token-payload.interface';
 import { User } from '../../user/schemas/user.schema';
 import * as crypto from 'crypto';
 import { VerifyDeviceDto } from '../dtos/verify-device.dto';
+import { GoogleAuthDto } from '../dtos/google-auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -674,6 +675,84 @@ export class AuthService {
 
       this.logger.error(`Password reset failed: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to reset password');
+    }
+  }
+
+  async googleLogin(
+    user: GoogleAuthDto,
+    res: Response,
+    req: Request,
+  ): Promise<any> {
+    this.logger.debug(`Google login attempt for email: ${user.email}`);
+
+    try {
+      let dbUser = await this.userService.findUserByEmail(user.email);
+
+      if (!dbUser) {
+        this.logger.debug(
+          `Creating new user from Google account: ${user.email}`,
+        );
+
+        const randomPassword = crypto.randomBytes(16).toString('hex');
+        const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+        const username =
+          user.email.split('@')[0] + crypto.randomBytes(2).toString('hex');
+
+        // Create new user
+        dbUser = await this.userService.createUser({
+          email: user.email,
+          username,
+          password: hashedPassword,
+          isEmailVerified: true,
+          provider: 'google',
+          firstName: user.firstName,
+          lastName: user.lastName,
+          profilePicture: user.picture,
+        } as any);
+
+        this.logger.debug(`New user created from Google OAuth: ${dbUser._id}`);
+
+        // Send registration welcome email
+        try {
+          await this.emailService.sendRegistrationEmail(dbUser);
+          this.logger.debug(
+            `Registration welcome email sent to ${dbUser.email}`,
+          );
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send registration welcome email: ${emailError.message}`,
+            emailError.stack,
+          );
+        }
+      } else {
+        this.logger.debug(
+          `Existing user found for Google login: ${dbUser._id}`,
+        );
+      }
+
+      const deviceFingerprint = this.generateDeviceFingerprint(req);
+      this.logger.debug(
+        `Device fingerprint generated for Google login: ${deviceFingerprint.substring(0, 8)}...`,
+      );
+
+      const isKnownDevice = await this.checkKnownDevice(
+        dbUser._id.toString(),
+        deviceFingerprint,
+      );
+
+      if (!isKnownDevice) {
+        await this.userService.addVerifiedDevice(
+          dbUser._id.toString(),
+          deviceFingerprint,
+        );
+      }
+
+      // Complete login with JWT generation
+      return this.completeLogin(dbUser, res);
+    } catch (error) {
+      this.logger.error(`Google login failed: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Google authentication failed');
     }
   }
 

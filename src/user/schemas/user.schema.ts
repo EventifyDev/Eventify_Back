@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { ApiProperty } from '@nestjs/swagger';
+import { Role } from '@/roles/schemas/role.schema';
 
 @Schema({ timestamps: true })
 export class User extends Document {
@@ -43,6 +44,13 @@ export class User extends Document {
 
   @Prop()
   refreshToken?: string;
+
+  @ApiProperty({
+    description: 'User role',
+    type: String,
+  })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Role' })
+  role: Role | MongooseSchema.Types.ObjectId;
 
   @Prop({ default: false })
   isEmailVerified: boolean;
