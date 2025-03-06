@@ -28,7 +28,7 @@ export class JwtAuthMiddleware implements NestMiddleware {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
-      const user = await this.userService.getUserById(payload.sub);
+      const user = await this.userService.getUser(payload.sub);
       if (!user) {
         throw new UnauthorizedException('User not found');
       }

@@ -1,9 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { Logger, BadRequestException } from '@nestjs/common';
 import { config } from 'aws-sdk';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function setupSwagger(app: any) {
   const options = new DocumentBuilder()
@@ -43,6 +43,7 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
     setupCors(app);
+
     app.useGlobalPipes(
       new ValidationPipe({
         transform: true,
@@ -66,6 +67,10 @@ async function bootstrap() {
         },
       }),
     );
+
+    // Apply the global exception filter
+    app.useGlobalFilters(new GlobalExceptionFilter());
+
     setupSwagger(app);
 
     // set the aws sdk used to upload files and images to aws s3 bucket
@@ -87,7 +92,7 @@ async function bootstrap() {
       `📚 Swagger documentation available at: ${await app.getUrl()}/api-docs`,
     );
   } catch (error) {
-    logger.error('❌ Application failed to start:', error);
+    logger.error(`❌ Application failed to start: ${error}`);
     process.exit(1);
   }
 }

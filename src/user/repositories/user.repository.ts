@@ -1,6 +1,6 @@
 import { IUserRepository } from '../interfaces/user.repository.interface';
 import { User } from '../schemas/user.schema';
-import { Model } from 'mongoose';
+import { FilterQuery, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { CreateUserDto } from '../dtos/create-user.dto';
 import { UpdateUserDto } from '../dtos/update-user.dto';
@@ -13,30 +13,51 @@ export class UserRepository implements IUserRepository {
     return newUser.save();
   }
 
-  async findUserById(id: string): Promise<User | null> {
-    return this.userModel.findById(id).select('-password -__v').exec();
+  async findUser(query: FilterQuery<User>): Promise<User | null> {
+    try {
+      const user = await this.userModel.findOne(query);
+
+      if (!user) {
+        return null;
+      }
+
+      return user.toObject();
+    } catch (error) {
+      throw new Error(`Error finding user: ${error.message}`);
+    }
   }
 
-  async findUserByEmail(email: string): Promise<User | null> {
-    const user = await this.userModel
-      .findOne({ email })
-      .select('+password')
-      .lean()
+  async findUserWithPassword(query: FilterQuery<User>): Promise<User | null> {
+    try {
+      const user = await this.userModel.findOne(query).select('+password');
+
+      if (!user) {
+        return null;
+      }
+
+      return user.toObject();
+    } catch (error) {
+      throw new Error(`Error finding user with password: ${error.message}`);
+    }
+  }
+
+  async addVerifiedDevice(
+    userId: string,
+    deviceFingerprint: string,
+  ): Promise<void> {
+    await this.userModel
+      .findByIdAndUpdate(userId, {
+        $addToSet: { verifiedDevices: deviceFingerprint },
+      })
       .exec();
-
-    return user as User | null;
-  }
-
-  async findUserByUsername(username: string): Promise<User | null> {
-    return this.userModel.findOne({ username: username }).exec();
   }
 
   async findAllUsers(): Promise<User[]> {
-    return this.userModel.find().exec();
+    return this.userModel.find({});
   }
 
-  async updateUser(id: string, userDto: UpdateUserDto): Promise<User | null> {
-    return this.userModel.findByIdAndUpdate(id, userDto, { new: true }).exec();
+  async updateUser(query: FilterQuery<User>, data: UpdateUserDto) {
+    return this.userModel.findOneAndUpdate(query, data);
   }
 
   async deleteUser(id: string): Promise<void> {

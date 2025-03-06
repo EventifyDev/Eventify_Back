@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { IParticipantService } from '../interfaces/participant.interface';
 import { IParticipantRepository } from '../interfaces/participant.repository.interface';
@@ -9,7 +11,6 @@ import { EventService } from '../../event/providers/event.service';
 import { CreateParticipantDto } from '../dtos/create-participant.dto';
 import { UpdateParticipantDto } from '../dtos/update-participant.dto';
 import { Participant } from '../schemas/participant.schema';
-import { Inject, forwardRef } from '@nestjs/common';
 
 @Injectable()
 export class ParticipantService implements IParticipantService {
