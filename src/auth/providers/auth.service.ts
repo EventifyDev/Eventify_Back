@@ -6,6 +6,8 @@ import {
   InternalServerErrorException,
   ConflictException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../../user/providers/user.service';
@@ -20,6 +22,8 @@ import { User } from '../../user/schemas/user.schema';
 import * as crypto from 'crypto';
 import { VerifyDeviceDto } from '../dtos/verify-device.dto';
 import { GoogleAuthDto } from '../dtos/google-auth.dto';
+import { RoleService } from '../../roles/providers/role.service';
+import { Role } from '../../roles/schemas/role.schema';
 
 @Injectable()
 export class AuthService {
@@ -30,6 +34,8 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => RoleService))
+    private readonly rolesService: RoleService,
   ) {
     this.logger.log('AuthService initialized');
   }
@@ -789,7 +795,19 @@ export class AuthService {
   private async generateTokens(user: any) {
     this.logger.debug(`Generating tokens for userId: ${user._id}`);
 
-    const tokenPayload: TokenPayload = { email: user.email, userId: user._id };
+    const userWithRole = await this.rolesService.getUserWithRole(user._id);
+
+    // Add type assertion to properly handle the Role | ObjectId union type
+    const roleObj = userWithRole?.role ? (userWithRole.role as Role) : null;
+    const role = roleObj?.name || null;
+    const permissions = roleObj?.permissions || [];
+
+    const tokenPayload: TokenPayload = {
+      email: user.email,
+      userId: user._id,
+      role,
+      permissions,
+    };
 
     const accessToken = this.jwtService.sign(tokenPayload, {
       secret: this.configService.getOrThrow('JWT_ACCESS_TOKEN_SECRET'),

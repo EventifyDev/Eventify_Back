@@ -1,6 +1,7 @@
 import { Role } from '../schemas/role.schema';
-import { CreateRoleDto } from '../dto/create-role.dto';
-import { UpdateRoleDto } from '../dto/update-role.dto';
+import { CreateRoleDto } from '../dtos/create-role.dto';
+import { UpdateRoleDto } from '../dtos/update-role.dto';
+import { User } from '../../user/schemas/user.schema';
 
 export interface IRoleService {
   findAll(): Promise<Role[]>;
@@ -10,6 +11,7 @@ export interface IRoleService {
   update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role>;
   remove(id: string): Promise<void>;
   assignRoleToUser(userId: string, roleId: string): Promise<any>;
+  getUserWithRole(userId: string): Promise<User>;
   hasPermission(userId: string, permission: string): Promise<boolean>;
   initializeRoles(): Promise<void>;
 }

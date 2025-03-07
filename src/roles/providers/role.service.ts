@@ -3,18 +3,23 @@ import {
   NotFoundException,
   ConflictException,
   Logger,
+  Inject,
 } from '@nestjs/common';
-import { Role } from '@/schemas/role.schema';
-import { CreateRoleDto } from '@/dto/create-role.dto';
-import { UpdateRoleDto } from '@/dto/update-role.dto';
-import { IRoleService } from '@/interfaces/role-service.interface';
-import { RoleRepository } from '@/repositories/role.repository';
+import { Role } from '../schemas/role.schema';
+import { CreateRoleDto } from '../dtos/create-role.dto';
+import { UpdateRoleDto } from '../dtos/update-role.dto';
+import { IRoleService } from '../interfaces/role-service.interface';
+import { IRoleRepository } from '../interfaces/role-repository.interface';
+import { User } from '../../user/schemas/user.schema';
 
 @Injectable()
 export class RoleService implements IRoleService {
   private readonly logger = new Logger(RoleService.name);
 
-  constructor(private readonly roleRepository: RoleRepository) {
+  constructor(
+    @Inject('IRoleRepository')
+    private readonly roleRepository: IRoleRepository,
+  ) {
     this.initializeRoles();
   }
 
@@ -36,6 +41,10 @@ export class RoleService implements IRoleService {
       throw new NotFoundException(`Role with name ${name} not found`);
     }
     return role;
+  }
+
+  async getUserWithRole(userId: string): Promise<User> {
+    return this.roleRepository.getUserWithRole(userId);
   }
 
   async create(createRoleDto: CreateRoleDto): Promise<Role> {
