@@ -1,9 +1,17 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from '../../user/providers/user.service';
 import { TokenPayload } from '../interfaces/token-payload.interface';
+import { RoleService } from '../../roles/providers/role.service';
+import { Role } from '../../roles/schemas/role.schema';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -12,6 +20,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly configService: ConfigService,
     private readonly userService: UserService,
+    @Inject(forwardRef(() => RoleService))
+    private readonly roleService: RoleService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -32,8 +42,41 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         throw new UnauthorizedException('User not found');
       }
 
-      this.logger.debug(`User validated for userId: ${payload.userId}`);
-      return { _id: user._id, email: user.email };
+      let role = null;
+      let permissions = [];
+
+      // If role info is in payload, use it directly
+      if (payload.role) {
+        role = payload.role;
+        permissions = payload.permissions || [];
+        this.logger.debug(`Using role from payload: ${role}`);
+      }
+      // Otherwise try to get it from database
+      else {
+        try {
+          const userWithRole = await this.roleService.getUserWithRole(
+            payload.userId,
+          );
+          if (userWithRole && userWithRole.role) {
+            const roleObj = userWithRole.role as Role;
+            role = roleObj.name;
+            permissions = roleObj.permissions || [];
+            this.logger.debug(`Retrieved role from database: ${role}`);
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to retrieve role: ${error.message}`);
+        }
+      }
+
+      this.logger.debug(
+        `User validated for userId: ${payload.userId} with role: ${role}`,
+      );
+      return {
+        userId: payload.userId,
+        email: user.email,
+        role,
+        permissions,
+      };
     } catch (error) {
       this.logger.error(`JWT validation failed: ${error.message}`);
       throw new UnauthorizedException('Invalid token');

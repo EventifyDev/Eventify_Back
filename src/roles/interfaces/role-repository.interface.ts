@@ -1,6 +1,6 @@
 import { Role } from '../schemas/role.schema';
-import { CreateRoleDto } from '../dto/create-role.dto';
-import { UpdateRoleDto } from '../dto/update-role.dto';
+import { CreateRoleDto } from '../dtos/create-role.dto';
+import { UpdateRoleDto } from '../dtos/update-role.dto';
 
 export interface IRoleRepository {
   findAll(): Promise<Role[]>;

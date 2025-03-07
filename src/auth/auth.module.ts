@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
-import { AuthService } from '@/auth/providers/auth.service';
-import { LocalStrategy } from '@/auth/strategies/local.strategy';
+import { Module, forwardRef } from '@nestjs/common';
+import { AuthService } from './providers/auth.service';
+import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from '@/auth/strategies/jwt.strategy';
 import { JwtRefreshStrategy } from '@/auth/strategies/jwt-refresh.strategy';
 import { GoogleStrategy } from '@/auth/strategies/google.strategy';
@@ -11,6 +11,7 @@ import { AuthController } from '@/auth/controllers/auth.controller';
 import { EmailService } from '@/auth/providers/email.service';
 import { MailerConfig } from '@/config/mailer.config';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { RolesModule } from '@/roles/roles.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       }),
       inject: [ConfigService],
     }),
+    forwardRef(() => RolesModule),
   ],
   controllers: [AuthController],
   providers: [

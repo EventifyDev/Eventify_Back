@@ -13,6 +13,7 @@ import { EventModule } from './event/event.module';
 import { UploadModule } from './upload/upload.module';
 import { ParticipantModule } from './participant/participant.module';
 import { CategoryModule } from './categories/category.module';
+import { RolesModule } from './roles/roles.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CategoryModule } from './categories/category.module';
     UploadModule,
     ParticipantModule,
     CategoryModule,
+    RolesModule,
   ],
   controllers: [AppController],
   providers: [

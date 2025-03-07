@@ -10,12 +10,12 @@ import {
   HttpStatus,
   HttpCode,
 } from '@nestjs/common';
-import { RolesService } from '@/roles.service';
-import { CreateRoleDto } from '@/dto/create-role.dto';
-import { UpdateRoleDto } from '@/dto/update-role.dto';
-import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
-import { RequirePermissions } from '@/decorators/permissions.decorator';
-import { PermissionsGuard } from '@/guards/permissions.guard';
+import { RoleService } from '../providers/role.service';
+import { CreateRoleDto } from '../dtos/create-role.dto';
+import { UpdateRoleDto } from '../dtos/update-role.dto';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RequirePermissions } from '../decorators/permissions.decorator';
+import { PermissionsGuard } from '../guards/permissions.guard';
 import {
   ApiTags,
   ApiOperation,
@@ -28,7 +28,7 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RolesController {
-  constructor(private readonly rolesService: RolesService) {}
+  constructor(private readonly rolesService: RoleService) {}
 
   @Post()
   @RequirePermissions('manage:roles')
