@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Role, RoleSchema } from './schemas/role.schema';
 import { User, UserSchema } from '../user/schemas/user.schema';
@@ -13,7 +13,7 @@ import { UserModule } from '../user/user.module';
       { name: Role.name, schema: RoleSchema },
       { name: User.name, schema: UserSchema },
     ]),
-    UserModule,
+    forwardRef(() => UserModule),
   ],
   providers: [
     {

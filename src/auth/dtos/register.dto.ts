@@ -5,6 +5,7 @@ import {
   IsString,
   MinLength,
   Matches,
+  IsEnum,
 } from 'class-validator';
 
 export class RegisterDto {
@@ -36,4 +37,10 @@ export class RegisterDto {
   @IsNotEmpty({ message: 'Password is required' })
   @MinLength(8, { message: 'Password must be at least 8 characters long' })
   password: string;
+
+  @IsNotEmpty()
+  @IsEnum(['Organizer', 'Participant'], {
+    message: 'Role must be either Organizer or Participant',
+  })
+  role: string;
 }
