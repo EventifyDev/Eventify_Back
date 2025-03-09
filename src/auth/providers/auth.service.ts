@@ -8,6 +8,7 @@ import {
   Logger,
   Inject,
   forwardRef,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '../../user/providers/user.service';
@@ -40,6 +41,48 @@ export class AuthService {
     this.logger.log('AuthService initialized');
   }
 
+  async validateAdminUser(username: string, password: string): Promise<any> {
+    this.logger.debug(`Attempting to validate admin user: ${username}`);
+
+    // Find user by username with password
+    const user =
+      await this.userService.findUserByUsernameWithPassword(username);
+
+    if (!user?.password) {
+      this.logger.warn(`Admin user not found or password not set: ${username}`);
+      return null;
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    this.logger.debug(`Password validation result: ${isPasswordValid}`);
+
+    if (!isPasswordValid) {
+      this.logger.warn(`Invalid password for admin: ${username}`);
+      return null;
+    }
+
+    // Verify admin role
+    const userWithRole = await this.rolesService.getUserWithRole(
+      user._id.toString(),
+    );
+    const roleObj = userWithRole?.role ? (userWithRole.role as Role) : null;
+    const roleName = roleObj?.name;
+
+    if (roleName !== 'Super Admin' && roleName !== 'Administrator') {
+      this.logger.warn(
+        `User ${username} does not have admin privileges (role: ${roleName})`,
+      );
+      return null;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _, ...result } = user.toObject ? user.toObject() : user;
+    this.logger.debug(`Admin ${username} validated with role: ${roleName}`);
+
+    return result;
+  }
+
   async validateUser(email: string, password: string): Promise<any> {
     this.logger.debug(`Attempting to validate user: ${email}`);
     const user = await this.userService.findUserByEmailWithPassword(email);
@@ -66,28 +109,53 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto, res: Response, req: Request) {
-    this.logger.debug(`Login attempt for email: ${loginDto.email}`);
+    const { email, password } = loginDto;
+    this.logger.debug(`Login attempt for email: ${email}`);
 
-    // Validate user credentials
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+    // First try to validate as a regular user
+    let user = await this.validateUser(email, password);
+
+    // If not a regular user, check if this might be an admin user
     if (!user) {
-      this.logger.warn(`Login failed for email: ${loginDto.email}`);
+      this.logger.debug(
+        `Regular user validation failed, trying admin validation for: ${email}`,
+      );
+
+      // Get the user with role to check if admin
+      const potentialAdminUser = await this.userService.findUserByEmail(email);
+      if (potentialAdminUser) {
+        const userWithRole = await this.rolesService.getUserWithRole(
+          potentialAdminUser._id.toString(),
+        );
+        const roleObj = userWithRole?.role ? (userWithRole.role as Role) : null;
+        const roleName = roleObj?.name;
+
+        if (roleName === 'Super Admin' || roleName === 'Administrator') {
+          this.logger.debug(
+            `User has admin role (${roleName}), validating as admin`,
+          );
+          user = await this.validateUser(email, password);
+        }
+      }
+    }
+
+    // Check if authentication was successful with either method
+    if (!user) {
+      this.logger.warn(`Login failed for email: ${email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate a device fingerprint from the request
+    // Continue with device verification and login completion
     const deviceFingerprint = this.generateDeviceFingerprint(req);
     this.logger.debug(
       `Device fingerprint generated for login: ${deviceFingerprint.substring(0, 8)}...`,
     );
 
-    // Check if this device has been previously verified
     const isKnownDevice = await this.checkKnownDevice(
       user._id,
       deviceFingerprint,
     );
 
-    // If device is already verified, proceed with normal login
     if (isKnownDevice) {
       this.logger.debug(
         `Known device for userId: ${user._id}, proceeding with login`,
@@ -100,21 +168,18 @@ export class AuthService {
       `New device detected for userId: ${user._id}, requiring verification`,
     );
 
-    // Generate OTP code
     const otpCode = this.generateDeterministicOtp(
       user._id.toString(),
       user.email,
-      Date.now(), // Use current time to ensure uniqueness
+      Date.now(),
     );
 
-    // Store verification data
     await this.userService.updateUser(user._id, {
       deviceVerificationOtp: otpCode,
       deviceVerificationOtpCreatedAt: new Date(),
       pendingDeviceFingerprint: deviceFingerprint,
     });
 
-    // Send verification email with device info
     try {
       const deviceInfo = this.getDeviceInfo(req);
       await this.emailService.sendDeviceVerificationEmail(
@@ -130,7 +195,6 @@ export class AuthService {
       );
     }
 
-    // Return partial response indicating verification needed
     return {
       requiresDeviceVerification: true,
       email: user.email,
@@ -210,9 +274,39 @@ export class AuthService {
   async register(registerDto: RegisterDto): Promise<Omit<User, 'password'>> {
     this.logger.debug(`Registration attempt for email: ${registerDto.email}`);
 
+    if (
+      registerDto.role === 'Administrator' ||
+      registerDto.role === 'Super Admin'
+    ) {
+      throw new ForbiddenException(
+        'Administrator account creation is not permitted',
+      );
+    }
+
     try {
-      const user = await this.userService.createUser(registerDto);
+      const { role: roleName, ...userData } = registerDto;
+
+      // Create user without role field first
+      const user = await this.userService.createUser(userData);
       this.logger.debug(`User created with ID: ${user._id}`);
+
+      // Now assign role by name
+      try {
+        // Find the role by name
+        const role = await this.rolesService.findByName(roleName);
+        if (!role) {
+          this.logger.warn(`Role ${roleName} not found during registration`);
+        } else {
+          const roleId = (role as any)._id.toString();
+          await this.rolesService.assignRoleToUser(user._id.toString(), roleId);
+          this.logger.debug(`Role ${roleName} assigned to user ${user.email}`);
+        }
+      } catch (roleError) {
+        this.logger.error(
+          `Failed to assign role to user: ${roleError.message}`,
+          roleError.stack,
+        );
+      }
 
       // Generate OTP using crypto for proper deterministic hashing
       const otpCode = this.generateDeterministicOtp(
@@ -221,13 +315,14 @@ export class AuthService {
         user.createdAt.getTime(),
       );
 
+      // Mark user as unverified and set OTP timestamp
       await this.userService.updateUser(user._id, {
         isEmailVerified: false,
         otpCreatedAt: new Date(),
       });
 
+      // Send verification email with OTP
       try {
-        // Send verification email with OTP
         await this.emailService.sendEmailVerificationEmail(user, otpCode);
         this.logger.debug(`Verification email with OTP sent to ${user.email}`);
       } catch (emailError) {

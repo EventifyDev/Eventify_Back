@@ -19,8 +19,10 @@ export class RoleService implements IRoleService {
   constructor(
     @Inject('IRoleRepository')
     private readonly roleRepository: IRoleRepository,
-  ) {
-    this.initializeRoles();
+  ) {}
+
+  async onModuleInit() {
+    await this.initializeRoles();
   }
 
   async findAll(): Promise<Role[]> {
@@ -134,25 +136,46 @@ export class RoleService implements IRoleService {
       },
     ];
 
+    this.logger.log('Initializing default roles...');
+
     for (const roleData of defaultRoles) {
       try {
-        const existingRole = await this.roleRepository.findByName(
-          roleData.name,
-        );
-        if (!existingRole) {
-          await this.create(roleData);
-          this.logger.log(`Created default role: ${roleData.name}`);
-        } else {
+        // Try to find the role first
+        try {
+          await this.findByName(roleData.name);
           this.logger.debug(`Role ${roleData.name} already exists`);
+        } catch (findError) {
+          // Only proceed with creation if the error is NotFoundException
+          if (findError instanceof NotFoundException) {
+            try {
+              await this.roleRepository.create(roleData);
+              this.logger.log(`Created default role: ${roleData.name}`);
+            } catch (createError) {
+              // Handle the case where another process created the role in the meantime
+              if (createError.code === 11000) {
+                this.logger.debug(
+                  `Role ${roleData.name} was created concurrently by another process`,
+                );
+              } else {
+                this.logger.error(
+                  `Failed to create role ${roleData.name}: ${createError.message}`,
+                );
+              }
+            }
+          } else {
+            // Unexpected error during find
+            this.logger.error(
+              `Error finding role ${roleData.name}: ${findError.message}`,
+            );
+          }
         }
       } catch (error) {
-        // Skip if error is not related to role not found
-        if (!(error instanceof NotFoundException)) {
-          this.logger.error(
-            `Error creating role ${roleData.name}: ${error.message}`,
-          );
-        }
+        this.logger.error(
+          `Unexpected error processing role ${roleData.name}: ${error.message}`,
+        );
       }
     }
+
+    this.logger.log('Default roles initialization completed');
   }
 }

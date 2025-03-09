@@ -50,7 +50,7 @@ export class User extends Document {
     type: String,
   })
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Role' })
-  role: Role | MongooseSchema.Types.ObjectId;
+  role: Role;
 
   @Prop({ default: false })
   isEmailVerified: boolean;
