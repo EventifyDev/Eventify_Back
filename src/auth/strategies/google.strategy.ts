@@ -13,6 +13,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET'),
       callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL'),
       scope: ['email', 'profile'],
+      state: true,
     });
     this.logger.log('GoogleStrategy initialized');
   }
@@ -24,12 +25,30 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     done: VerifyCallback,
   ): Promise<any> {
     const { name, emails, photos } = profile;
+    let role = 'Participant';
+
+    if (profile._json.state) {
+      try {
+        const stateData = JSON.parse(
+          Buffer.from(profile._json.state, 'base64').toString(),
+        );
+        if (
+          stateData.role &&
+          ['Organizer', 'Participant'].includes(stateData.role)
+        ) {
+          role = stateData.role;
+        }
+      } catch (error) {
+        this.logger.error(`Failed to parse state data: ${error.message}`);
+      }
+    }
 
     const user = {
       email: emails[0].value,
       firstName: name.givenName,
       lastName: name.familyName,
       picture: photos[0].value,
+      role: role,
       accessToken,
       refreshToken,
     };

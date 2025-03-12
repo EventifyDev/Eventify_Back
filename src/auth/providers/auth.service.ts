@@ -814,6 +814,35 @@ export class AuthService {
 
         this.logger.debug(`New user created from Google OAuth: ${dbUser._id}`);
 
+        // Assign default role (Participant) for Google users
+        try {
+          const roleName = ['Organizer', 'Participant'].includes(user.role)
+            ? user.role
+            : 'Participant';
+
+          const role = await this.rolesService.findByName(roleName);
+
+          if (!role) {
+            this.logger.warn(
+              `Role ${roleName} not found for Google user ${dbUser.email}`,
+            );
+          } else {
+            const roleId = (role as any)._id.toString();
+            await this.rolesService.assignRoleToUser(
+              dbUser._id.toString(),
+              roleId,
+            );
+            this.logger.debug(
+              `Role ${roleName} assigned to Google user ${dbUser.email}`,
+            );
+          }
+        } catch (roleError) {
+          this.logger.error(
+            `Failed to assign role to Google user: ${roleError.message}`,
+            roleError.stack,
+          );
+        }
+
         // Send registration welcome email
         try {
           await this.emailService.sendRegistrationEmail(dbUser);

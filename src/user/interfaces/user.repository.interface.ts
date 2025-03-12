@@ -9,6 +9,7 @@ export interface IUserRepository {
   findUserWithPassword(query: FilterQuery<User>): Promise<User | null>;
   addVerifiedDevice(userId: string, deviceFingerprint: string): Promise<void>;
   findAllUsers(): Promise<User[]>;
+  findUsersByRoleIds(roleIds: string[]): Promise<User[]>;
   updateUser(
     query: FilterQuery<User>,
     data: UpdateUserDto,

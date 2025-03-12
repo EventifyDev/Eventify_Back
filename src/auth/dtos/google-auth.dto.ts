@@ -55,4 +55,13 @@ export class GoogleAuthDto {
   @IsString()
   @IsOptional()
   refreshToken?: string;
+
+  @ApiProperty({
+    description: 'User role (Organizer or Participant)',
+    enum: ['Organizer', 'Participant'],
+    default: 'Participant',
+  })
+  @IsString()
+  @IsNotEmpty()
+  role: string;
 }

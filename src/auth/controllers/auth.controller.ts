@@ -9,12 +9,14 @@ import {
   Res,
   Req,
   Logger,
+  Query,
 } from '@nestjs/common';
 import {
   ApiOperation,
   ApiResponse,
   ApiTags,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -98,7 +100,15 @@ export class AuthController {
     status: 200,
     description: 'Redirected to Google authentication page',
   })
-  async googleAuth() {}
+  @ApiQuery({
+    name: 'role',
+    enum: ['Organizer', 'Participant'],
+    required: true,
+  })
+  async googleAuth(@Query('role') role: string, @Req() req: Request) {
+    const state = Buffer.from(JSON.stringify({ role })).toString('base64');
+    req.query.state = state;
+  }
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
@@ -116,11 +126,7 @@ export class AuthController {
       `Google auth callback received for user: ${googleUser.email}`,
     );
     try {
-      const result = await this.authService.googleLogin(
-        req.user as GoogleAuthDto,
-        res,
-        req,
-      );
+      const result = await this.authService.googleLogin(googleUser, res, req);
 
       const frontendUrl = this.configService.get<string>('FRONTEND_URL');
       return res.redirect(
