@@ -28,6 +28,10 @@ export class RoleRepository implements IRoleRepository {
     return this.roleModel.findOne({ name }).exec();
   }
 
+  async findRolesByNames(names: string[]): Promise<Role[]> {
+    return this.roleModel.find({ name: { $in: names } }).exec();
+  }
+
   async create(createRoleDto: CreateRoleDto): Promise<Role> {
     const createdRole = new this.roleModel(createRoleDto);
     return createdRole.save();

@@ -4,6 +4,7 @@ import {
   ConflictException,
   Logger,
   Inject,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { Role } from '../schemas/role.schema';
 import { CreateRoleDto } from '../dtos/create-role.dto';
@@ -47,6 +48,34 @@ export class RoleService implements IRoleService {
 
   async getUserWithRole(userId: string): Promise<User> {
     return this.roleRepository.getUserWithRole(userId);
+  }
+
+  async getUsersByRoleNames(roleNames: string[]): Promise<User[]> {
+    this.logger.debug(`Finding users with roles: ${roleNames.join(', ')}`);
+
+    try {
+      const roles = await this.roleRepository.findRolesByNames(roleNames);
+
+      if (!roles.length) {
+        this.logger.warn(`No roles found with names: ${roleNames.join(', ')}`);
+        return [];
+      }
+
+      const roleIds = roles.map((role) => role._id);
+
+      const users = await this.userRepository.findUsersByRoleIds(roleIds);
+
+      this.logger.debug(`Found ${users.length} users with specified roles`);
+      return users;
+    } catch (error) {
+      this.logger.error(
+        `Error finding users by role names: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve users by role names',
+      );
+    }
   }
 
   async create(createRoleDto: CreateRoleDto): Promise<Role> {

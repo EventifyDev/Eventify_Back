@@ -1,12 +1,14 @@
 import { IUserRepository } from '../interfaces/user.repository.interface';
 import { User } from '../schemas/user.schema';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { CreateUserDto } from '../dtos/create-user.dto';
 import { UpdateUserDto } from '../dtos/update-user.dto';
 
 export class UserRepository implements IUserRepository {
-  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
 
   async createUser(userDto: CreateUserDto): Promise<User> {
     const newUser = new this.userModel(userDto);
@@ -54,6 +56,11 @@ export class UserRepository implements IUserRepository {
 
   async findAllUsers(): Promise<User[]> {
     return this.userModel.find({});
+  }
+
+  async findUsersByRoleIds(roleIds: string[]): Promise<User[]> {
+    const objectIds = roleIds.map((id) => new Types.ObjectId(id));
+    return this.userModel.find({ role: { $in: objectIds } }).exec();
   }
 
   async updateUser(query: FilterQuery<User>, data: UpdateUserDto) {
