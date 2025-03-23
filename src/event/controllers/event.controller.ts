@@ -20,13 +20,14 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { EventService } from '../providers/event.service';
 import { CreateEventDto } from '../dtos/create-event.dto';
 import { UpdateEventDto } from '../dtos/update-event.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { Event } from '../schemas/event.schema';
+import { Event, EventDocument } from '../schemas/event.schema';
 import { Participant } from '../../participant/schemas/participant.schema';
 import { ParticipantService } from '../../participant/providers/participant.service';
 import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
@@ -53,19 +54,34 @@ export class EventController {
     return this.eventService.search(query);
   }
 
-  @Get('user/:userId')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @Get()
   @ApiOperation({ summary: 'Get all events with pagination' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'List of events', type: [Event] })
-  async findAll(
-    @Param('userId') userId: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
-  ): Promise<Event[]> {
-    return this.eventService.findAll(userId, page, limit);
+  async findAll(): Promise<Event[]> {
+    return this.eventService.findAll();
+  }
+
+  @Get('user/:userId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get user-specific events' })
+  async findUserEvents(@Param('userId') userId: string): Promise<Event[]> {
+    return this.eventService.findByUserId(userId);
+  }
+
+  @Get('admin/pending')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get all pending events' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of pending events',
+    type: [Event],
+  })
+  async getPendingEvents(): Promise<EventDocument[]> {
+    return this.eventService.getPendingEvents();
   }
 
   @Get(':id')
@@ -74,10 +90,38 @@ export class EventController {
   @ApiResponse({ status: 200, description: 'Event found', type: Event })
   @ApiResponse({ status: 404, description: 'Event not found' })
   async findById(@Param('id') id: string): Promise<Event> {
-    console.log('id', id);
     const event = await this.eventService.findById(id);
-    console.log('event', event);
     return event;
+  }
+
+  @Put(':id/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Approve an event' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, description: 'Event approved', type: Event })
+  @ApiResponse({ status: 404, description: 'Event not found' })
+  async approveEvent(
+    @Param('id') id: string,
+    @Request() req: any,
+  ): Promise<EventDocument> {
+    return this.eventService.approveEvent(id, req.user.userId);
+  }
+
+  @Put(':id/reject')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reject an event' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiBody({ description: 'Rejection reason', type: String })
+  @ApiResponse({ status: 200, description: 'Event rejected', type: Event })
+  @ApiResponse({ status: 404, description: 'Event not found' })
+  async rejectEvent(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body('reason') reason: string,
+  ): Promise<EventDocument> {
+    return this.eventService.rejectEvent(id, req.user.userId, reason);
   }
 
   @Post()
@@ -93,7 +137,7 @@ export class EventController {
     @Request() req: any,
     @UploadedFile() image: Express.Multer.File,
   ): Promise<Event> {
-    return this.eventService.create(createEventDto, req.user.id, image);
+    return this.eventService.create(createEventDto, req.user.userId, image);
   }
 
   @Put(':id')
@@ -122,8 +166,8 @@ export class EventController {
   @ApiResponse({ status: 200, description: 'Event deleted' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async delete(@Param('id') id: string): Promise<boolean> {
-    return this.eventService.delete(id);
+  async delete(@Param('id') id: string): Promise<void> {
+    await this.eventService.delete(id);
   }
 
   @Get('organizer/:organizerId')
