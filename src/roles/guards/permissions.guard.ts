@@ -14,8 +14,8 @@ export class PermissionsGuard implements CanActivate {
   private readonly logger = new Logger(PermissionsGuard.name);
 
   constructor(
-    private reflector: Reflector,
-    private rolesService: RoleService,
+    private readonly reflector: Reflector,
+    private readonly rolesService: RoleService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

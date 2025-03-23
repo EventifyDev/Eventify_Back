@@ -13,12 +13,16 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET'),
       callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL'),
       scope: ['email', 'profile'],
-      state: true,
+      passReqToCallback: true,
+      state: false,
+      accessType: 'offline',
+      prompt: 'consent',
     });
     this.logger.log('GoogleStrategy initialized');
   }
 
   async validate(
+    req: any,
     accessToken: string,
     refreshToken: string,
     profile: any,
@@ -27,20 +31,13 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const { name, emails, photos } = profile;
     let role = 'Participant';
 
-    if (profile._json.state) {
-      try {
-        const stateData = JSON.parse(
-          Buffer.from(profile._json.state, 'base64').toString(),
-        );
-        if (
-          stateData.role &&
-          ['Organizer', 'Participant'].includes(stateData.role)
-        ) {
-          role = stateData.role;
-        }
-      } catch (error) {
-        this.logger.error(`Failed to parse state data: ${error.message}`);
-      }
+    try {
+      const state = JSON.parse(
+        Buffer.from(req.query.state.toString(), 'base64').toString(),
+      );
+      role = state?.role || role;
+    } catch (error) {
+      this.logger.error('Error parsing state:', error.message);
     }
 
     const user = {

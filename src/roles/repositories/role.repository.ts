@@ -12,8 +12,8 @@ export class RoleRepository implements IRoleRepository {
   private readonly logger = new Logger(RoleRepository.name);
 
   constructor(
-    @InjectModel(Role.name) private roleModel: Model<RoleDocument>,
-    @InjectModel(User.name) private userModel: Model<User>,
+    @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
   async findAll(): Promise<Role[]> {
@@ -29,7 +29,10 @@ export class RoleRepository implements IRoleRepository {
   }
 
   async findRolesByNames(names: string[]): Promise<Role[]> {
-    return this.roleModel.find({ name: { $in: names } }).exec();
+    return this.roleModel
+      .find({ name: { $in: names } })
+      .lean()
+      .exec();
   }
 
   async create(createRoleDto: CreateRoleDto): Promise<Role> {

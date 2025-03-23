@@ -6,12 +6,13 @@ import {
   Inject,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { Role } from '../schemas/role.schema';
+import { Role, RoleDocument } from '../schemas/role.schema';
 import { CreateRoleDto } from '../dtos/create-role.dto';
 import { UpdateRoleDto } from '../dtos/update-role.dto';
 import { IRoleService } from '../interfaces/role-service.interface';
 import { IRoleRepository } from '../interfaces/role-repository.interface';
 import { User } from '../../user/schemas/user.schema';
+import { IUserRepository } from '../../user/interfaces/user.repository.interface';
 
 @Injectable()
 export class RoleService implements IRoleService {
@@ -20,6 +21,8 @@ export class RoleService implements IRoleService {
   constructor(
     @Inject('IRoleRepository')
     private readonly roleRepository: IRoleRepository,
+    @Inject('IUserRepository')
+    private readonly userRepository: IUserRepository,
   ) {}
 
   async onModuleInit() {
@@ -61,7 +64,9 @@ export class RoleService implements IRoleService {
         return [];
       }
 
-      const roleIds = roles.map((role) => role._id);
+      const roleIds = roles.map((role) =>
+        (role as RoleDocument)._id.toString(),
+      );
 
       const users = await this.userRepository.findUsersByRoleIds(roleIds);
 
@@ -74,6 +79,24 @@ export class RoleService implements IRoleService {
       );
       throw new InternalServerErrorException(
         'Failed to retrieve users by role names',
+      );
+    }
+  }
+
+  async findRolesByNames(names: string[]): Promise<Role[]> {
+    this.logger.debug(`Finding roles with names: ${names.join(', ')}`);
+
+    try {
+      const roles = await this.roleRepository.findRolesByNames(names);
+      this.logger.debug(`Found ${roles.length} roles`);
+      return roles;
+    } catch (error) {
+      this.logger.error(
+        `Error finding roles by names: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve roles by names',
       );
     }
   }
@@ -155,7 +178,12 @@ export class RoleService implements IRoleService {
       },
       {
         name: 'Organizer',
-        permissions: ['manage:events', 'read:events', 'read:participants'],
+        permissions: [
+          'manage:events',
+          'read:events',
+          'read:participants',
+          'read:roles',
+        ],
         description: 'Event creation and management',
       },
       {
@@ -168,43 +196,44 @@ export class RoleService implements IRoleService {
     this.logger.log('Initializing default roles...');
 
     for (const roleData of defaultRoles) {
-      try {
-        // Try to find the role first
-        try {
-          await this.findByName(roleData.name);
-          this.logger.debug(`Role ${roleData.name} already exists`);
-        } catch (findError) {
-          // Only proceed with creation if the error is NotFoundException
-          if (findError instanceof NotFoundException) {
-            try {
-              await this.roleRepository.create(roleData);
-              this.logger.log(`Created default role: ${roleData.name}`);
-            } catch (createError) {
-              // Handle the case where another process created the role in the meantime
-              if (createError.code === 11000) {
-                this.logger.debug(
-                  `Role ${roleData.name} was created concurrently by another process`,
-                );
-              } else {
-                this.logger.error(
-                  `Failed to create role ${roleData.name}: ${createError.message}`,
-                );
-              }
-            }
-          } else {
-            // Unexpected error during find
-            this.logger.error(
-              `Error finding role ${roleData.name}: ${findError.message}`,
-            );
-          }
-        }
-      } catch (error) {
-        this.logger.error(
-          `Unexpected error processing role ${roleData.name}: ${error.message}`,
-        );
-      }
+      await this.createRoleIfNotExists(roleData);
     }
 
     this.logger.log('Default roles initialization completed');
+  }
+
+  private async createRoleIfNotExists(roleData: any): Promise<void> {
+    try {
+      // Check if role exists
+      await this.findByName(roleData.name);
+      this.logger.debug(`Role ${roleData.name} already exists`);
+      return;
+    } catch (error) {
+      if (!(error instanceof NotFoundException)) {
+        this.logger.error(
+          `Error finding role ${roleData.name}: ${error.message}`,
+        );
+        return;
+      }
+
+      this.tryCreateRole(roleData);
+    }
+  }
+
+  private async tryCreateRole(roleData: any): Promise<void> {
+    try {
+      await this.roleRepository.create(roleData);
+      this.logger.log(`Created default role: ${roleData.name}`);
+    } catch (error) {
+      if (error.code === 11000) {
+        this.logger.debug(
+          `Role ${roleData.name} was created concurrently by another process`,
+        );
+      } else {
+        this.logger.error(
+          `Failed to create role ${roleData.name}: ${error.message}`,
+        );
+      }
+    }
   }
 }
