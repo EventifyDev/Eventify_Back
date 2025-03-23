@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationRepository } from '../repositories/notification.repository';
-import { NotificationType, Notification } from '../schemas/notification.schema';
+import { Notification } from '../schemas/notification.schema';
 import { CreateNotificationDto } from '../dtos/create-notification.dto';
 import { NotificationGateway } from '../gateway/notification.gateway';
 import { RoleService } from '../../roles/providers/role.service';
 import { INotificationService } from '../interfaces/notification.service.interface';
+import { NotificationType } from '../enums/notification-type.enum';
 
 @Injectable()
 export class NotificationService implements INotificationService {
@@ -50,9 +51,9 @@ export class NotificationService implements INotificationService {
     const notificationPromises = adminUsers.map((admin) => {
       const notificationDto: CreateNotificationDto = {
         type: NotificationType.EVENT_CREATED,
-        title: 'Nouvel événement créé',
-        message: `L'événement "${eventName}" a été créé et nécessite une approbation`,
-        recipient: admin._id,
+        title: 'New event created',
+        message: `The event "${eventName}" has been created and requires approval`,
+        recipient: admin._id.toString(),
         sender: organizerId,
         data: {
           eventId,
@@ -86,10 +87,10 @@ export class NotificationService implements INotificationService {
       type: approved
         ? NotificationType.EVENT_APPROVED
         : NotificationType.EVENT_REJECTED,
-      title: approved ? 'Événement approuvé' : 'Événement refusé',
+      title: approved ? 'Event approved' : 'Event rejected',
       message: approved
-        ? `Votre événement "${eventName}" a été approuvé et est maintenant visible publiquement.`
-        : `Votre événement "${eventName}" a été refusé. Raison: ${reason || 'Non spécifiée'}`,
+        ? `Your event "${eventName}" has been approved and is now publicly visible.`
+        : `Your event "${eventName}" has been rejected. Reason: ${reason || 'Not specified'}`,
       recipient: organizerId,
       data: {
         eventId,

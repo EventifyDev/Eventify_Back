@@ -4,6 +4,9 @@ import { ValidationPipe, Logger, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { config } from 'aws-sdk';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import * as session from 'express-session';
+import * as passport from 'passport';
+import * as cookieParser from 'cookie-parser';
 
 async function setupSwagger(app: any) {
   const options = new DocumentBuilder()
@@ -28,11 +31,18 @@ async function setupSwagger(app: any) {
 }
 
 function setupCors(app: any) {
-  const allowedOrigins = ['http://localhost:5173'];
   app.enableCors({
-    origin: allowedOrigins,
+    origin: process.env.FRONTEND_URL,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Set-Cookie'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Cookie',
+      'Set-Cookie',
+    ],
   });
 }
 
@@ -41,6 +51,24 @@ async function bootstrap() {
 
   try {
     const app = await NestFactory.create(AppModule);
+    app.use(cookieParser());
+
+    app.use(
+      session({
+        secret: process.env.SESSION_SECRET,
+        resave: true,
+        saveUninitialized: true,
+        cookie: {
+          maxAge: 3600000,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          httpOnly: true,
+        },
+      }),
+    );
+
+    app.use(passport.initialize());
+    app.use(passport.session());
 
     setupCors(app);
 
@@ -69,11 +97,10 @@ async function bootstrap() {
     );
 
     // Apply the global exception filter
-    app.useGlobalFilters(new GlobalExceptionFilter());
+    // app.useGlobalFilters(new GlobalExceptionFilter());
 
     setupSwagger(app);
 
-    // set the aws sdk used to upload files and images to aws s3 bucket
     config.update({
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
