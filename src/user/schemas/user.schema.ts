@@ -1,11 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 import { ApiProperty } from '@nestjs/swagger';
+import { Role } from '@/roles/schemas/role.schema';
 
-@Schema({
-  collection: 'users',
-  timestamps: true,
-})
+@Schema({ timestamps: true })
 export class User extends Document {
   @ApiProperty({
     description: 'Unique username',
@@ -43,6 +41,40 @@ export class User extends Document {
     select: false,
   })
   password: string;
+
+  @Prop()
+  refreshToken?: string;
+
+  @ApiProperty({
+    description: 'User role',
+    type: String,
+  })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Role' })
+  role: Role;
+
+  @Prop({ default: false })
+  isEmailVerified: boolean;
+
+  @Prop()
+  otpCreatedAt?: Date;
+
+  @Prop({ type: [String], default: [] })
+  verifiedDevices: string[];
+
+  @Prop({ type: String })
+  deviceVerificationOtp: string;
+
+  @Prop({ type: Date })
+  deviceVerificationOtpCreatedAt: Date;
+
+  @Prop({ type: String })
+  pendingDeviceFingerprint: string;
+
+  @Prop()
+  createdAt: Date;
+
+  @Prop()
+  updatedAt: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

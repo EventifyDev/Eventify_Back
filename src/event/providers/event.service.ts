@@ -1,93 +1,206 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EventRepository } from '../repositories/event.repository';
 import { CreateEventDto } from '../dtos/create-event.dto';
 import { UpdateEventDto } from '../dtos/update-event.dto';
-import { Event } from '../schemas/event.schema';
+import { EventDocument } from '../schemas/event.schema';
 import { IEventService } from '../interfaces/event.interface';
 import { UploadService } from '../../upload/providers/upload.service';
 import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
+import { NotificationService } from '@/notifications/providers/notification.service';
+import { Types } from 'mongoose';
 
 @Injectable()
 export class EventService implements IEventService {
+  private readonly logger = new Logger(EventService.name);
+
   constructor(
     private readonly eventRepository: EventRepository,
     private readonly uploadService: UploadService,
+    private readonly notificationService: NotificationService,
   ) {}
 
-  async findAll(
-    userId: string,
-    page?: number,
-    limit?: number,
-  ): Promise<Event[]> {
-    const events = await this.eventRepository.findAll(userId, page, limit);
+  async findAll(): Promise<EventDocument[]> {
+    const events = await this.eventRepository.findAll();
+    if (!events.length) {
+      throw new NotFoundException('Events not found');
+    }
+    return events;
+  }
+
+  async findById(id: string): Promise<EventDocument> {
+    const event = await this.eventRepository.findById(id);
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+    return event;
+  }
+
+  async findByUserId(userId: string): Promise<EventDocument[]> {
+    const events = await this.eventRepository.findByOrganizerId(userId);
+    if (!events.length) {
+      throw new NotFoundException('Events not found');
+    }
+    return events;
+  }
+
+  async findByOrganizerId(organizerId: string): Promise<EventDocument[]> {
+    const events = await this.eventRepository.findByOrganizerId(organizerId);
     if (!events || events.length === 0) {
       throw new NotFoundException('Events not found');
     }
     return events;
   }
 
-  async findById(id: string): Promise<Event> {
-    return this.eventRepository.findById(id);
+  async getPendingEvents(): Promise<EventDocument[]> {
+    const events = await this.eventRepository.findPendingEvents();
+    if (!events || events.length === 0) {
+      throw new NotFoundException('No pending events found');
+    }
+    return events;
+  }
+
+  async approveEvent(eventId: string, adminId: string): Promise<EventDocument> {
+    return this.updateEventStatus(eventId, adminId, true);
+  }
+
+  async rejectEvent(
+    eventId: string,
+    adminId: string,
+    reason: string,
+  ): Promise<EventDocument> {
+    return this.updateEventStatus(eventId, adminId, false, reason);
+  }
+
+  private async updateEventStatus(
+    eventId: string,
+    adminId: string,
+    isApproved: boolean,
+    rejectionReason?: string,
+  ): Promise<EventDocument> {
+    const adminObjectId = new Types.ObjectId(adminId);
+
+    const approvalData = {
+      isApproved,
+      reviewedBy: adminObjectId,
+      ...(rejectionReason && { rejectionReason }),
+    };
+
+    const updatedEvent = await this.eventRepository.updateApprovalStatus(
+      eventId,
+      approvalData,
+    );
+
+    if (!updatedEvent) {
+      throw new NotFoundException('Event not found');
+    }
+
+    await this.notifyEventStatusUpdate(
+      updatedEvent,
+      isApproved,
+      rejectionReason,
+    );
+
+    return updatedEvent;
+  }
+
+  private async notifyEventStatusUpdate(
+    event: EventDocument,
+    isApproved: boolean,
+    rejectionReason?: string,
+  ): Promise<void> {
+    const organizerId = this.extractOrganizerId(event);
+
+    await this.notificationService.notifyOrganizerAboutEventApproval(
+      event._id.toString(),
+      event.name,
+      organizerId,
+      isApproved,
+      rejectionReason,
+    );
+  }
+
+  private extractOrganizerId(event: EventDocument): string {
+    return typeof event.organizer === 'object' && event.organizer?._id
+      ? event.organizer._id.toString()
+      : String(event.organizer);
   }
 
   async create(
     createEventDto: CreateEventDto,
     organizerId: string,
     image?: Express.Multer.File,
-  ): Promise<Event> {
-    try {
-      let imageUrl: string;
+  ): Promise<EventDocument> {
+    const imageUrl = await this.processEventImage(createEventDto, image);
 
-      if (image) {
-        const uploadResult = await this.uploadService.uploadFile(image);
-        imageUrl = uploadResult.url;
-      }
-      // Handle base64 image from DTO
-      else if (
-        createEventDto.image &&
-        typeof createEventDto.image === 'string' &&
-        createEventDto.image.startsWith('data:image')
-      ) {
-        const buffer = Buffer.from(
-          createEventDto.image.replace(/^data:image\/\w+;base64,/, ''),
-          'base64',
-        );
-        const mimeType = createEventDto.image.split(';')[0].split(':')[1];
+    const eventData = {
+      ...createEventDto,
+      organizer: organizerId,
+      image: imageUrl,
+      isApproved: false,
+    };
 
-        const uploadResult = await this.uploadService.uploadFile({
-          buffer,
-          mimetype: mimeType,
-          originalname: `image-${Date.now()}.${mimeType.split('/')[1]}`,
-        } as Express.Multer.File);
+    const createdEvent = await this.eventRepository.create(eventData);
+    await this.notifyAdminsAboutNewEvent(createdEvent);
 
-        imageUrl = uploadResult.url;
-      } else {
-        throw new BadRequestException('Image is required');
-      }
+    return createdEvent;
+  }
 
-      const eventData = {
-        ...createEventDto,
-        organizer: organizerId,
-        image: imageUrl,
-      };
+  private async notifyAdminsAboutNewEvent(event: EventDocument): Promise<void> {
+    const organizerId = this.extractOrganizerId(event);
 
-      const createdEvent = await this.eventRepository.create(eventData);
-      return createdEvent;
-    } catch (error) {
-      console.error('Error creating event:', error);
-      throw new BadRequestException(`Failed to create event: ${error.message}`);
+    await this.notificationService.notifyAdminsAboutNewEvent(
+      event._id.toString(),
+      event.name,
+      organizerId,
+    );
+  }
+
+  private async processEventImage(
+    createEventDto: CreateEventDto,
+    image?: Express.Multer.File,
+  ): Promise<string> {
+    if (image) {
+      const uploadResult = await this.uploadService.uploadFile(image);
+      return uploadResult.url;
     }
+
+    if (
+      createEventDto.image &&
+      typeof createEventDto.image === 'string' &&
+      createEventDto.image.startsWith('data:image')
+    ) {
+      return this.uploadBase64Image(createEventDto.image);
+    }
+
+    throw new BadRequestException('Image is required');
+  }
+
+  private async uploadBase64Image(base64Image: string): Promise<string> {
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const mimeType = base64Image.split(';')[0].split(':')[1];
+    const fileExtension = mimeType.split('/')[1];
+
+    const file = {
+      buffer,
+      mimetype: mimeType,
+      originalname: `event-image-${Date.now()}.${fileExtension}`,
+    } as Express.Multer.File;
+
+    const uploadResult = await this.uploadService.uploadFile(file);
+    return uploadResult.url;
   }
 
   async update(
     id: string,
     updateEventDto: UpdateEventDto,
     image?: Express.Multer.File,
-  ): Promise<Event> {
+  ): Promise<EventDocument> {
     try {
       const existingEvent = await this.eventRepository.findById(id);
       if (!existingEvent) {
@@ -119,8 +232,6 @@ export class EventService implements IEventService {
 
         updateEventDto.image = uploadResult.url;
       }
-
-      // Ensure date is properly converted
       if (updateEventDto.date) {
         updateEventDto.date = new Date(updateEventDto.date);
       }
@@ -132,12 +243,11 @@ export class EventService implements IEventService {
     }
   }
 
-  async delete(id: string): Promise<boolean> {
-    return this.eventRepository.delete(id);
-  }
-
-  async findByOrganizerId(organizerId: string): Promise<Event[]> {
-    return this.eventRepository.findByOrganizerId(organizerId);
+  async delete(id: string): Promise<void> {
+    const deletedEvent = await this.eventRepository.delete(id);
+    if (!deletedEvent) {
+      throw new NotFoundException('Event not found');
+    }
   }
 
   async search(query: string): Promise<SearchEventResponseDto[]> {

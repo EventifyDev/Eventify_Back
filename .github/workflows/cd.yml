@@ -3,7 +3,7 @@ on:
   push:
     branches: 
       - main
-
+      
 env:
   SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
 

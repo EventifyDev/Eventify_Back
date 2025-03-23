@@ -1,47 +1,53 @@
-import {
-  Injectable,
-  NestMiddleware,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
-import { UserService } from '../../user/providers/user.service';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class JwtAuthMiddleware implements NestMiddleware {
   constructor(
     private readonly jwtService: JwtService,
-    private readonly userService: UserService,
     private readonly configService: ConfigService,
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
+    const token =
+      this.extractTokenFromCookies(req) || this.extractTokenFromHeader(req);
+
+    if (!token) {
+      return next();
+    }
+
     try {
-      const token = this.extractTokenFromHeader(req);
-
-      if (!token) {
-        throw new UnauthorizedException('No token provided');
-      }
-
       const payload = await this.jwtService.verifyAsync(token, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
-      const user = await this.userService.getUserById(payload.sub);
-      if (!user) {
-        throw new UnauthorizedException('User not found');
-      }
-
-      req['user'] = user;
-      next();
-    } catch {
-      throw new UnauthorizedException('Invalid token');
+      req.user = payload;
+    } catch (e) {
+      this.clearInvalidCookies(res);
     }
+
+    next();
   }
 
-  private extractTokenFromHeader(request: Request): string | undefined {
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
+  private extractTokenFromHeader(req: Request): string | undefined {
+    const [type, token] = req.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
+  }
+
+  private extractTokenFromCookies(req: Request): string | undefined {
+    return req.cookies?.Authentication;
+  }
+
+  private clearInvalidCookies(res: Response) {
+    res.clearCookie('Authentication', {
+      httpOnly: true,
+      secure: true,
+    });
+    res.clearCookie('Refresh', {
+      httpOnly: true,
+      secure: true,
+    });
   }
 }

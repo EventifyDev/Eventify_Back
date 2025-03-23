@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { IEventRepository } from '../interfaces/event.repository.interface';
-import { Event } from '../schemas/event.schema';
+import { Event, EventDocument } from '../schemas/event.schema';
 import { CreateEventDto } from '../dtos/create-event.dto';
 import { UpdateEventDto } from '../dtos/update-event.dto';
 import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
@@ -13,33 +13,41 @@ export class EventRepository implements IEventRepository {
     @InjectModel(Event.name) private readonly eventModel: Model<Event>,
   ) {}
 
-  async findAll(userId: string, page = 1, limit = 10): Promise<Event[]> {
-    const skip = (page - 1) * limit;
-    return (await this.eventModel
-      .find({ organizer: userId })
-      .populate('organizer', 'username email')
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec()) as Event[];
+  async findAll(): Promise<EventDocument[]> {
+    return this.eventModel.find().exec();
   }
 
-  async findById(id: string): Promise<Event | null> {
-    const event = await this.eventModel
-      .findById(id)
-      .populate('organizer', 'username email')
-      .lean()
+  async findById(id: string): Promise<EventDocument | null> {
+    return this.eventModel.findById(id).exec();
+  }
+
+  async findPendingEvents(): Promise<EventDocument[]> {
+    return this.eventModel
+      .find({
+        isApproved: false,
+        rejectionReason: { $exists: false },
+      })
       .exec();
-
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
-    return event as Event;
   }
 
-  async create(createEventDto: CreateEventDto): Promise<Event> {
+  async updateApprovalStatus(
+    id: string,
+    approvalData: {
+      isApproved: boolean;
+      reviewedBy: Types.ObjectId;
+      rejectionReason?: string;
+    },
+  ): Promise<EventDocument | null> {
+    return this.eventModel
+      .findByIdAndUpdate(id, approvalData, { new: true })
+      .exec();
+  }
+
+  async findByOrganizerId(organizerId: string): Promise<EventDocument[]> {
+    return this.eventModel.find({ organizer: organizerId }).exec();
+  }
+
+  async create(createEventDto: CreateEventDto): Promise<EventDocument> {
     const createdEvent = new this.eventModel(createEventDto);
     return createdEvent.save();
   }
@@ -47,41 +55,14 @@ export class EventRepository implements IEventRepository {
   async update(
     id: string,
     updateEventDto: UpdateEventDto,
-  ): Promise<Event | null> {
-    const updatedEvent = await this.eventModel
-      .findByIdAndUpdate(
-        id,
-        {
-          ...updateEventDto,
-        },
-        { new: true },
-      )
-      .populate('organizer', 'username email')
-      .lean()
+  ): Promise<EventDocument | null> {
+    return this.eventModel
+      .findByIdAndUpdate(id, updateEventDto, { new: true })
       .exec();
-
-    if (!updatedEvent) {
-      throw new NotFoundException('Event not found');
-    }
-
-    return updatedEvent as Event;
   }
 
-  async delete(id: string): Promise<boolean> {
-    const result = await this.eventModel.findByIdAndDelete(id).exec();
-    if (!result) {
-      throw new NotFoundException('Event not found');
-    }
-    return true;
-  }
-
-  async findByOrganizerId(organizerId: string): Promise<Event[]> {
-    return (await this.eventModel
-      .find({ organizer: organizerId })
-      .populate('organizer', 'username email')
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec()) as Event[];
+  async delete(id: string): Promise<EventDocument | null> {
+    return this.eventModel.findByIdAndDelete(id).exec();
   }
 
   async search(query: string): Promise<SearchEventResponseDto[]> {
