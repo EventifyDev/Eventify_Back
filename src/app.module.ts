@@ -14,6 +14,8 @@ import { UploadModule } from './upload/upload.module';
 import { ParticipantModule } from './participant/participant.module';
 import { CategoryModule } from './categories/category.module';
 import { RolesModule } from './roles/roles.module';
+import { NotificationModule } from './notifications/notification.module';
+import { TicketModule } from './ticket/ticket.module';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { RolesModule } from './roles/roles.module';
     ParticipantModule,
     CategoryModule,
     RolesModule,
+    NotificationModule,
+    TicketModule,
   ],
   controllers: [AppController],
   providers: [

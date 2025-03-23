@@ -7,7 +7,7 @@ import {
   IsObject,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { NotificationType } from '../schemas/notification.schema';
+import { NotificationType } from '../enums/notification-type.enum';
 
 export class CreateNotificationDto {
   @ApiProperty({
