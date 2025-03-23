@@ -1,6 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { Document } from 'mongoose';
-
+import mongoose, { Document, Types } from 'mongoose';
 import { User } from '../../user/schemas/user.schema';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -100,7 +99,7 @@ export class Event {
   })
   @Prop({
     required: true,
-    enum: ['SPORT', 'CULTURAL', 'PROFESSIONAL', 'SOCIAL', 'OTHER'],
+    enum: ['SPORT', 'CULTURAL', 'PROFESSIONAL', 'SOCIAL', 'CINEMA', 'OTHER'],
     default: 'OTHER',
   })
   eventType: string;
@@ -116,6 +115,42 @@ export class Event {
     type: String,
   })
   image: string;
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether the event has been approved by an admin',
+    example: false,
+    default: false,
+  })
+  @Prop({ default: false })
+  isApproved: boolean;
+
+  @ApiProperty({
+    type: String,
+    description: 'ID of the admin who reviewed the event',
+    example: '60d5ec9d8648d01b5c3ce043',
+    required: false,
+  })
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User' })
+  reviewedBy: Types.ObjectId;
+
+  @ApiProperty({
+    type: Date,
+    description: 'Date and time when the event was reviewed',
+    example: '2024-07-10T14:30:00Z',
+    required: false,
+  })
+  @Prop()
+  reviewedAt: Date;
+
+  @ApiProperty({
+    type: String,
+    description: 'Reason for rejection if the event was not approved',
+    example: 'Event content violates community guidelines',
+    required: false,
+  })
+  @Prop()
+  rejectionReason?: string;
 }
 
 export const EventSchema = SchemaFactory.createForClass(Event);
