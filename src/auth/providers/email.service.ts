@@ -51,7 +51,7 @@ export class EmailService {
    */
   async sendPasswordResetEmail(user: User, resetToken: string): Promise<void> {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-    const resetPasswordUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+    const resetPasswordUrl = `${frontendUrl}/auth/reset-password?token=${resetToken}`;
 
     const mailOptions = {
       from: `"Eventify Security" <${this.configService.get<string>('MAIL_FROM')}>`,

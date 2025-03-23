@@ -6,6 +6,7 @@ import { RoleRepository } from './repositories/role.repository';
 import { RoleService } from './providers/role.service';
 import { RolesController } from './controllers/roles.controller';
 import { UserModule } from '../user/user.module';
+import { UserRepository } from '../user/repositories/user.repository';
 
 @Module({
   imports: [
@@ -19,6 +20,10 @@ import { UserModule } from '../user/user.module';
     {
       provide: 'IRoleRepository',
       useClass: RoleRepository,
+    },
+    {
+      provide: 'IUserRepository',
+      useClass: UserRepository,
     },
     {
       provide: 'IRoleService',

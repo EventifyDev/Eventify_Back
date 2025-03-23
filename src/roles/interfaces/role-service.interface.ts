@@ -7,6 +7,8 @@ export interface IRoleService {
   findAll(): Promise<Role[]>;
   findOne(id: string): Promise<Role>;
   findByName(name: string): Promise<Role>;
+  findRolesByNames(names: string[]): Promise<Role[]>;
+  getUsersByRoleNames(roleNames: string[]): Promise<User[]>;
   create(createRoleDto: CreateRoleDto): Promise<Role>;
   update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role>;
   remove(id: string): Promise<void>;

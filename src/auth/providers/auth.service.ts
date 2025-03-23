@@ -25,12 +25,33 @@ import { VerifyDeviceDto } from '../dtos/verify-device.dto';
 import { GoogleAuthDto } from '../dtos/google-auth.dto';
 import { RoleService } from '../../roles/providers/role.service';
 import { Role } from '../../roles/schemas/role.schema';
+import { BlacklistedRefreshToken } from '../schemas/blacklisted-refresh-token.schema';
+import { Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
+interface LoginSuccessResult {
+  accessToken: string;
+  refreshToken: string;
+  userId: any;
+  email: any;
+  requiresDeviceVerification?: undefined;
+}
+
+interface DeviceVerificationResult {
+  requiresDeviceVerification: boolean;
+  email: any;
+  message: string;
+}
+
+type LoginResult = LoginSuccessResult | DeviceVerificationResult;
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
+    @InjectModel(BlacklistedRefreshToken.name)
+    private readonly blacklistedRefreshTokenModel: Model<BlacklistedRefreshToken>,
     private readonly userService: UserService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
@@ -108,7 +129,11 @@ export class AuthService {
     return null;
   }
 
-  async login(loginDto: LoginDto, res: Response, req: Request) {
+  async login(
+    loginDto: LoginDto,
+    res: Response,
+    req: Request,
+  ): Promise<LoginResult> {
     const { email, password } = loginDto;
     this.logger.debug(`Login attempt for email: ${email}`);
 
@@ -351,46 +376,79 @@ export class AuthService {
   }
 
   async refreshTokens(userId: string, refreshToken: string, res: Response) {
-    this.logger.debug(`Refreshing tokens for userId: ${userId}`);
-
     const user = await this.userService.getUser({ _id: userId });
-    if (!user || !user.refreshToken) {
-      this.logger.warn(`No user or refresh token found for userId: ${userId}`);
+    if (!user?.refreshToken) {
       throw new UnauthorizedException('Access denied');
     }
 
-    // Verify the refresh token
-    this.logger.debug(`Verifying refresh token for userId: ${userId}`);
-    const refreshTokenMatches = await bcrypt.compare(
-      refreshToken,
-      user.refreshToken,
-    );
-
-    if (!refreshTokenMatches) {
-      this.logger.warn(`Invalid refresh token for userId: ${userId}`);
+    const isValid = await bcrypt.compare(refreshToken, user.refreshToken);
+    if (!isValid) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    // Generate new tokens
-    this.logger.debug(`Generating new tokens for userId: ${userId}`);
     const { accessToken, refreshToken: newRefreshToken } =
       await this.generateTokens(user);
 
-    // Store new hashed refresh token
-    const hashedRefreshToken = await bcrypt.hash(newRefreshToken, 10);
-    await this.userService.updateUser(user._id, {
-      refreshToken: hashedRefreshToken,
-    });
-    this.logger.debug(`New refresh token stored for userId: ${userId}`);
-
-    // Set new cookies
+    await this.blacklistRefreshToken(refreshToken, userId);
+    await this.storeRefreshToken(user._id.toString(), newRefreshToken);
     this.setTokenCookies(res, accessToken, newRefreshToken);
-    this.logger.debug(`New token cookies set for userId: ${userId}`);
 
-    return {
-      accessToken,
-      refreshToken: newRefreshToken,
-    };
+    return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  private async blacklistRefreshToken(
+    token: string,
+    userId: string,
+  ): Promise<void> {
+    const refreshExpiration = this.configService.get<number>(
+      'JWT_REFRESH_TOKEN_EXPIRATION_MS',
+    );
+    const defaultExpiration = 7 * 24 * 60 * 60 * 1000;
+    const expirationMs =
+      typeof refreshExpiration === 'number' && refreshExpiration > 0
+        ? refreshExpiration
+        : defaultExpiration;
+
+    const expiresAt = new Date(Date.now() + expirationMs);
+
+    try {
+      await this.blacklistedRefreshTokenModel.create({
+        token,
+        userId,
+        expiresAt,
+      });
+    } catch (error) {
+      this.logger.error(`Error blacklisting token: ${error.message}`);
+    }
+  }
+
+  private async storeRefreshToken(
+    userId: string,
+    refreshToken: string,
+  ): Promise<void> {
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    await this.userService.updateUser(
+      { _id: userId },
+      {
+        refreshToken: hashedRefreshToken,
+      },
+    );
+  }
+
+  async isRefreshTokenBlacklisted(token: string): Promise<boolean> {
+    const count = await this.blacklistedRefreshTokenModel
+      .countDocuments({ token })
+      .exec();
+    return count > 0;
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async cleanupExpiredRefreshTokens() {
+    await this.blacklistedRefreshTokenModel
+      .deleteMany({
+        expiresAt: { $lte: new Date() },
+      })
+      .exec();
   }
 
   async logout(userId: string, res: Response) {
@@ -409,36 +467,31 @@ export class AuthService {
   async verifyUserRefreshToken(refreshToken: string, userId: string) {
     this.logger.debug(`Verifying refresh token for userId: ${userId}`);
 
-    try {
-      const user = await this.userService.getUser({ _id: userId });
-      if (!user || !user.refreshToken) {
-        this.logger.warn(
-          `User not found or no refresh token stored for userId: ${userId}`,
-        );
-        throw new NotFoundException(
-          'User not found or no refresh token stored',
-        );
-      }
-
-      const refreshTokenMatches = await bcrypt.compare(
-        refreshToken,
-        user.refreshToken,
-      );
-
-      if (!refreshTokenMatches) {
-        this.logger.warn(`Invalid refresh token for userId: ${userId}`);
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      this.logger.debug(`Refresh token verified for userId: ${userId}`);
-      return user;
-    } catch (error) {
-      this.logger.error(
-        `Refresh token verification failed: ${error.message}`,
-        error.stack,
-      );
-      throw new UnauthorizedException('Refresh token is not valid');
+    if (!refreshToken || !userId) {
+      this.logger.error('Missing token or user ID');
+      throw new BadRequestException('Invalid verification request');
     }
+
+    const user = await this.userService.getUser({ _id: userId });
+
+    if (!user?.refreshToken) {
+      this.logger.error(`No refresh token stored for user: ${userId}`);
+      throw new NotFoundException('Session expired');
+    }
+
+    const isValid = await bcrypt.compare(refreshToken, user.refreshToken);
+
+    if (!isValid) {
+      this.logger.error(`Token mismatch for user: ${userId}`);
+      // Fix this line to use a query object
+      await this.userService.updateUser(
+        { _id: userId },
+        { refreshToken: null },
+      );
+      throw new UnauthorizedException('Security violation detected');
+    }
+
+    return user;
   }
   async verifyOtp(email: string, otpCode: string): Promise<boolean> {
     this.logger.debug(`OTP verification attempt for email: ${email}`);
@@ -556,9 +609,9 @@ export class AuthService {
       throw new BadRequestException('No pending device verification');
     }
 
-    // Check OTP expiration (10 minutes)
+    // Check OTP expiration (1 minute)
     if (user.deviceVerificationOtpCreatedAt) {
-      const expirationTime = 10 * 60 * 1000;
+      const expirationTime = 1 * 60 * 1000;
       const currentTime = new Date().getTime();
       const createdTime = new Date(
         user.deviceVerificationOtpCreatedAt,
@@ -606,20 +659,6 @@ export class AuthService {
       if (user.isEmailVerified) {
         this.logger.debug(`Email already verified for user: ${email}`);
         throw new BadRequestException('Email is already verified');
-      }
-
-      // Implement rate limiting to prevent abuse
-      if (user.otpCreatedAt) {
-        const cooldownPeriod = 60 * 1000;
-        const currentTime = new Date().getTime();
-        const lastRequestTime = new Date(user.otpCreatedAt).getTime();
-
-        if (currentTime - lastRequestTime < cooldownPeriod) {
-          this.logger.warn(`OTP resend request too soon for user: ${email}`);
-          throw new BadRequestException(
-            'Please wait at least 1 minute before requesting a new code',
-          );
-        }
       }
 
       // Generate OTP using the same deterministic method
@@ -952,36 +991,24 @@ export class AuthService {
     accessToken: string,
     refreshToken: string,
   ) {
-    this.logger.debug('Setting token cookies');
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
 
-    const accessTokenExpiration = new Date();
-    accessTokenExpiration.setMilliseconds(
-      accessTokenExpiration.getTime() +
-        parseInt(
-          this.configService.getOrThrow<string>(
-            'JWT_ACCESS_TOKEN_EXPIRATION_MS',
-          ),
-        ),
-    );
+    const isLocal = !isProduction;
+    const sameSite = isLocal ? 'lax' : 'strict';
+    const secureCookie = isProduction;
 
-    // Set access token cookie
     res.cookie('Authentication', accessToken, {
       httpOnly: true,
-      secure: this.configService.getOrThrow('NODE_ENV') === 'production',
-      expires: accessTokenExpiration,
+      secure: secureCookie,
+      sameSite: sameSite,
+      maxAge: this.configService.get<number>('JWT_ACCESS_TOKEN_EXPIRATION_MS'),
     });
 
-    // Set refresh token cookie
     res.cookie('Refresh', refreshToken, {
       httpOnly: true,
-      secure: this.configService.getOrThrow('NODE_ENV') === 'production',
-      maxAge: parseInt(
-        this.configService.getOrThrow<string>(
-          'JWT_REFRESH_TOKEN_EXPIRATION_MS',
-        ),
-      ),
+      secure: secureCookie,
+      sameSite: sameSite,
+      maxAge: this.configService.get<number>('JWT_REFRESH_TOKEN_EXPIRATION_MS'),
     });
-
-    this.logger.debug('Token cookies set successfully');
   }
 }

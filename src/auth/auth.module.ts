@@ -12,9 +12,20 @@ import { EmailService } from '@/auth/providers/email.service';
 import { MailerConfig } from '@/config/mailer.config';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RolesModule } from '@/roles/roles.module';
+import {
+  BlacklistedRefreshToken,
+  BlacklistedRefreshTokenSchema,
+} from '@/auth/schemas/blacklisted-refresh-token.schema';
+import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
   imports: [
+    MongooseModule.forFeature([
+      {
+        name: BlacklistedRefreshToken.name,
+        schema: BlacklistedRefreshTokenSchema,
+      },
+    ]),
     UserModule,
     PassportModule,
     JwtModule.registerAsync({

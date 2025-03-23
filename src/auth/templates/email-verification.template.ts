@@ -13,7 +13,7 @@ export function getOtpVerificationTemplate(
       <title>Verify Your Email - Eventify</title>
       <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     </head>
-    <body style="margin: 0; padding: 0; font-family: 'Poppins', Arial, sans-serif; background-color: #f4f4f8; color: #333333;">
+    <body style="margin: 0; padding: 0; font-family: 'Poppins', Arial, sans-serif; background-color:rgb(255, 255, 255); color: #333333;">
       <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; margin-top: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
         <!-- Header -->
         <tr>

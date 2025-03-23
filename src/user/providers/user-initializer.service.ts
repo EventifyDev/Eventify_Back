@@ -27,7 +27,7 @@ export class UserInitializerService implements OnModuleInit {
       },
       {
         username: 'admin',
-        email: 'admin@eventify.com',
+        email: 'elmorjanimohamed200@gmail.com',
         password:
           this.configService.get<string>('ADMIN_PASSWORD') || 'Admin123!',
         roleName: 'Administrator',

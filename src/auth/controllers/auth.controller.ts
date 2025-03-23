@@ -9,7 +9,7 @@ import {
   Res,
   Req,
   Logger,
-  Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -31,7 +31,6 @@ import { ResetPasswordDto } from '../dtos/reset-password.dto';
 import { ForgotPasswordDto } from '../dtos/forgot-password.dto';
 import { VerifyDeviceDto } from '../dtos/verify-device.dto';
 import { GoogleAuthGuard } from '../guards/google-auth.guard';
-import { GoogleAuthDto } from '../dtos/google-auth.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -79,18 +78,18 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(
     @Body() loginDto: LoginDto,
-    @Res({ passthrough: true }) res: Response,
+    @Res() res: Response,
     @Req() req: Request,
   ) {
-    this.logger.log(`Login attempt with email: ${loginDto.email}`);
-    try {
-      const result = await this.authService.login(loginDto, res, req);
-      this.logger.log(`User logged in successfully: ${loginDto.email}`);
-      return result;
-    } catch (error) {
-      this.logger.error(`Login failed: ${error.message}`);
-      throw error;
+    const result = await this.authService.login(loginDto, res, req);
+    if (result.requiresDeviceVerification) {
+      return res.status(HttpStatus.OK).json({
+        requiresDeviceVerification: true,
+        email: loginDto.email,
+        message: 'Device verification required',
+      });
     }
+    return res.json(result);
   }
 
   @Get('google')
@@ -105,39 +104,20 @@ export class AuthController {
     enum: ['Organizer', 'Participant'],
     required: true,
   })
-  async googleAuth(@Query('role') role: string, @Req() req: Request) {
-    const state = Buffer.from(JSON.stringify({ role })).toString('base64');
-    req.query.state = state;
-  }
+  async googleAuth() {}
 
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
-  @ApiOperation({ summary: 'Google OAuth callback' })
-  @ApiResponse({
-    status: 200,
-    description: 'Authentication successful',
-  })
-  async googleAuthRedirect(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const googleUser = req.user as GoogleAuthDto;
-    this.logger.log(
-      `Google auth callback received for user: ${googleUser.email}`,
+  async googleAuthRedirect(@Req() req, @Res() res) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    const { accessToken, refreshToken } = req.user;
+
+    res.redirect(
+      `${frontendUrl}/auth/social-login?` +
+        `accessToken=${accessToken}&` +
+        `refreshToken=${refreshToken}&` +
+        `role=${req.user.role}`,
     );
-    try {
-      const result = await this.authService.googleLogin(googleUser, res, req);
-
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-      return res.redirect(
-        `${frontendUrl}/auth/social-login?accessToken=${result.accessToken}&refreshToken=${result.refreshToken}`,
-      );
-    } catch (error) {
-      this.logger.error(`Google authentication failed: ${error.message}`);
-
-      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
-      return res.redirect(`${frontendUrl}/auth/login?error=google_auth_failed`);
-    }
   }
 
   @Post('verify-otp')
@@ -160,11 +140,19 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Too many requests' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async resendOtp(@Body('email') email: string) {
-    await this.authService.resendOtp(email);
-    return {
-      success: true,
-      message: 'Verification code sent successfully. Please check your email.',
-    };
+    this.logger.log(`Resend OTP request for email: ${email}`);
+    try {
+      await this.authService.resendOtp(email);
+      this.logger.log(`OTP resent successfully to: ${email}`);
+      return {
+        success: true,
+        message:
+          'Verification code sent successfully. Please check your email.',
+      };
+    } catch (error) {
+      this.logger.error(`OTP resend failed: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   @Post('verify-device')
@@ -267,7 +255,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'User not authenticated.',
   })
-  async getProfile(@User('_id') userId: string) {
+  async getProfile(@User('userId') userId: string) {
     this.logger.log(`Profile retrieval for userId: ${userId}`);
     try {
       const result = await this.authService.getProfile(userId);
@@ -283,57 +271,54 @@ export class AuthController {
   @UseGuards(JwtRefreshAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Tokens successfully refreshed.',
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Invalid refresh token.',
-  })
   async refreshTokens(
-    @User('_id') userId: string,
+    @User('userId') userId: string,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
+    @Body() body?: { refreshToken?: string },
   ) {
-    this.logger.log(`Token refresh attempt for userId: ${userId}`);
-    try {
-      const refreshToken = req.cookies?.Refresh;
-      this.logger.debug(`Refresh token present: ${!!refreshToken}`);
+    // Extract token from cookies, authorization header, or request body
+    const refreshToken =
+      req.cookies?.Refresh ||
+      this.extractTokenFromHeader(req) ||
+      body?.refreshToken;
 
-      const result = await this.authService.refreshTokens(
-        userId,
-        refreshToken,
-        res,
-      );
-      this.logger.log(`Tokens refreshed successfully for userId: ${userId}`);
-      return result;
-    } catch (error) {
-      this.logger.error(`Token refresh failed: ${error.message}`);
-      throw error;
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token missing');
     }
+
+    const { accessToken, refreshToken: newRefreshToken } =
+      await this.authService.refreshTokens(userId, refreshToken, res);
+
+    // Set cookies for browser clients
+    res.cookie('Authentication', accessToken, { httpOnly: true });
+    res.cookie('Refresh', newRefreshToken, { httpOnly: true });
+
+    // Return tokens in response body for non-browser clients
+    return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  private extractTokenFromHeader(request: Request): string | undefined {
+    const authHeader = request.headers.authorization;
+    if (!authHeader) return undefined;
+
+    const [type, token] = authHeader.split(' ');
+    return type === 'Bearer' ? token : undefined;
   }
 
   @Post('logout')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'User logout' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'User successfully logged out.',
-  })
-  async logout(
-    @User('_id') userId: string,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    this.logger.log(`Logout attempt for userId: ${userId}`);
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     try {
-      const result = await this.authService.logout(userId, res);
-      this.logger.log(`User logged out successfully: ${userId}`);
-      return result;
-    } catch (error) {
-      this.logger.error(`Logout failed: ${error.message}`);
-      throw error;
+      const userId = req.user?.['_id'];
+      if (userId) {
+        await this.authService.logout(userId, res);
+      }
+    } finally {
+      res.clearCookie('Authentication');
+      res.clearCookie('Refresh');
+      return { success: true };
     }
   }
 }
