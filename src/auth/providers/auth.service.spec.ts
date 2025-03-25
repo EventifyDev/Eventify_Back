@@ -2,178 +2,371 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { UserService } from '../../user/providers/user.service';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EmailService } from './email.service';
+import { RoleService } from '../../roles/providers/role.service';
+import { getModelToken } from '@nestjs/mongoose';
+import { BlacklistedRefreshToken } from '../schemas/blacklisted-refresh-token.schema';
+import {
+  UnauthorizedException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { RegisterDto } from '../dtos/register.dto';
+import { LoginDto } from '../dtos/login.dto';
 import * as bcrypt from 'bcryptjs';
-import { Types } from 'mongoose';
-import { User } from '../../user/schemas/user.schema';
-jest.mock('bcryptjs');
 
 describe('AuthService', () => {
   let service: AuthService;
-  let userService: jest.Mocked<UserService>;
-  let jwtService: jest.Mocked<JwtService>;
+  let userService: UserService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let jwtService: JwtService;
+  let emailService: EmailService;
+  let rolesService: RoleService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let configService: ConfigService;
 
   const mockUser = {
-    _id: new Types.ObjectId('67464220a978f5889273313c'),
+    _id: 'user-id-123',
     email: 'test@example.com',
     username: 'testuser',
-    password: '$2a$10$.knUxhY/oDGHR1MoCC530.IS0PE1k77cHHnrZa0fB0XsqIvfOSZUy',
-    createdAt: new Date('2024-11-26T21:48:16.809Z'),
-    updatedAt: new Date('2024-11-26T21:48:16.809Z'),
-    __v: 0,
+    password: 'hashedPassword',
+    isEmailVerified: false,
+    createdAt: new Date(),
+    verifiedDevices: [],
+    toObject: () => ({
+      _id: 'user-id-123',
+      email: 'test@example.com',
+      username: 'testuser',
+      isEmailVerified: false,
+      createdAt: new Date(),
+      verifiedDevices: [],
+    }),
   };
 
-  const mockUserWithoutPassword = {
-    _id: mockUser._id,
-    email: mockUser.email,
-    username: mockUser.username,
-    createdAt: mockUser.createdAt,
-    updatedAt: mockUser.updatedAt,
-    __v: mockUser.__v,
+  const mockResponse = {
+    cookie: jest.fn(),
+    clearCookie: jest.fn(),
+  };
+
+  const mockRequest = {
+    headers: { 'user-agent': 'test-agent' },
+    ip: '127.0.0.1',
   };
 
   beforeEach(async () => {
-    const mockUserService = {
-      getUserByEmail: jest.fn(),
-      getUserById: jest.fn(),
-      createUser: jest.fn(),
-    };
-
-    const mockJwtService = {
-      sign: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         {
           provide: UserService,
-          useValue: mockUserService,
+          useValue: {
+            findUserByEmailWithPassword: jest.fn(),
+            findUserByEmail: jest.fn(),
+            createUser: jest.fn(),
+            updateUser: jest.fn(),
+            getUser: jest.fn(),
+            addVerifiedDevice: jest.fn(),
+          },
         },
         {
           provide: JwtService,
-          useValue: mockJwtService,
+          useValue: {
+            sign: jest.fn().mockReturnValue('mock-token'),
+            verifyAsync: jest.fn(),
+          },
+        },
+        {
+          provide: EmailService,
+          useValue: {
+            sendEmailVerificationEmail: jest.fn(),
+            sendRegistrationEmail: jest.fn(),
+            sendDeviceVerificationEmail: jest.fn(),
+            sendPasswordResetEmail: jest.fn(),
+            sendPasswordChangeConfirmationEmail: jest.fn(),
+          },
+        },
+        {
+          provide: RoleService,
+          useValue: {
+            findByName: jest.fn(),
+            assignRoleToUser: jest.fn(),
+            getUserWithRole: jest.fn(),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key) => {
+              const values = {
+                JWT_ACCESS_TOKEN_SECRET: 'access-secret',
+                JWT_REFRESH_TOKEN_SECRET: 'refresh-secret',
+                JWT_ACCESS_TOKEN_EXPIRATION_MS: 900000,
+                JWT_REFRESH_TOKEN_EXPIRATION_MS: 604800000,
+              };
+              return values[key];
+            }),
+            getOrThrow: jest.fn().mockImplementation((key) => {
+              const values = {
+                JWT_ACCESS_TOKEN_SECRET: 'access-secret',
+                JWT_REFRESH_TOKEN_SECRET: 'refresh-secret',
+                JWT_ACCESS_TOKEN_EXPIRATION_MS: 900000,
+                JWT_REFRESH_TOKEN_EXPIRATION_MS: 604800000,
+              };
+              return values[key];
+            }),
+          },
+        },
+        {
+          provide: getModelToken(BlacklistedRefreshToken.name),
+          useValue: {
+            create: jest.fn(),
+            deleteMany: jest.fn().mockReturnValue({
+              exec: jest.fn(),
+            }),
+            countDocuments: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue(0),
+            }),
+          },
         },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    userService = module.get(UserService);
-    jwtService = module.get(JwtService);
+    userService = module.get<UserService>(UserService);
+    jwtService = module.get<JwtService>(JwtService);
+    emailService = module.get<EmailService>(EmailService);
+    rolesService = module.get<RoleService>(RoleService);
+    configService = module.get<ConfigService>(ConfigService);
+
+    // Mock bcrypt
+    jest
+      .spyOn(bcrypt, 'compare')
+      .mockImplementation((plain) =>
+        Promise.resolve(plain === 'Password123!' || plain === 'refresh-token'),
+      );
+    jest
+      .spyOn(bcrypt, 'hash')
+      .mockImplementation((data) => Promise.resolve(`hashed-${data}`));
   });
 
-  describe('validateUser', () => {
-    it('should return user without password when credentials are valid', async () => {
-      userService.getUserByEmail.mockResolvedValue(mockUser as unknown as User);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
 
-      const result = await service.validateUser(
-        'test@example.com',
-        'password123',
-      );
+  describe('register', () => {
+    it('should register a new user', async () => {
+      const registerDto: RegisterDto = {
+        email: 'test@example.com',
+        password: 'Password123!',
+        username: 'testuser',
+        role: 'Participant',
+      };
 
-      expect(result).toEqual(mockUserWithoutPassword);
-      expect(userService.getUserByEmail).toHaveBeenCalledWith(
-        'test@example.com',
-      );
-      expect(bcrypt.compare).toHaveBeenCalledWith(
-        'password123',
-        mockUser.password,
-      );
+      jest.spyOn(userService, 'createUser').mockResolvedValue(mockUser as any);
+      jest
+        .spyOn(rolesService, 'findByName')
+        .mockResolvedValue({ _id: 'role-id', name: 'Participant' } as any);
+
+      const result = await service.register(registerDto);
+
+      expect(userService.createUser).toHaveBeenCalledWith({
+        email: registerDto.email,
+        password: registerDto.password,
+        username: registerDto.username,
+      });
+
+      expect(rolesService.assignRoleToUser).toHaveBeenCalled();
+      expect(emailService.sendEmailVerificationEmail).toHaveBeenCalled();
+      expect(result).not.toHaveProperty('password');
     });
 
-    it('should return null when user is not found', async () => {
-      userService.getUserByEmail.mockResolvedValue(null);
+    it('should throw ForbiddenException if trying to register as admin', async () => {
+      const registerDto: RegisterDto = {
+        email: 'admin@example.com',
+        password: 'Password123!',
+        username: 'admin',
+        role: 'Administrator',
+      };
 
-      const result = await service.validateUser(
-        'test@example.com',
-        'password123',
+      await expect(service.register(registerDto)).rejects.toThrow(
+        ForbiddenException,
       );
-
-      expect(result).toBeNull();
-    });
-
-    it('should return null when password is invalid', async () => {
-      userService.getUserByEmail.mockResolvedValue(mockUser as unknown as User);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-
-      const result = await service.validateUser(
-        'test@example.com',
-        'wrongpassword',
-      );
-
-      expect(result).toBeNull();
     });
   });
 
   describe('login', () => {
-    const loginDto = {
-      email: 'test@example.com',
-      password: 'password123',
-    };
+    it('should return access and refresh tokens for valid credentials', async () => {
+      const loginDto: LoginDto = {
+        email: 'test@example.com',
+        password: 'Password123!',
+      };
 
-    it('should return access token when login is successful', async () => {
       jest
-        .spyOn(service, 'validateUser')
-        .mockResolvedValue(mockUserWithoutPassword);
-      jwtService.sign.mockReturnValue('mock-token');
+        .spyOn(userService, 'findUserByEmailWithPassword')
+        .mockResolvedValue(mockUser as any);
+      jest.spyOn(userService, 'getUser').mockResolvedValue({
+        ...mockUser,
+        verifiedDevices: ['some-device-fingerprint'],
+      } as any);
+      jest
+        .spyOn(service as any, 'generateDeviceFingerprint')
+        .mockReturnValue('some-device-fingerprint');
 
-      const result = await service.login(loginDto);
+      const result = await service.login(
+        loginDto,
+        mockResponse as any,
+        mockRequest as any,
+      );
 
-      expect(result).toEqual({
-        access_token: 'mock-token',
-        userId: mockUser._id,
-      });
-      expect(jwtService.sign).toHaveBeenCalledWith({
-        email: mockUser.email,
-        sub: mockUser._id,
-      });
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result).toHaveProperty('userId');
+      expect(mockResponse.cookie).toHaveBeenCalledTimes(2);
     });
 
-    it('should throw UnauthorizedException when credentials are invalid', async () => {
-      jest.spyOn(service, 'validateUser').mockResolvedValue(null);
+    it('should throw UnauthorizedException for invalid credentials', async () => {
+      const loginDto: LoginDto = {
+        email: 'test@example.com',
+        password: 'WrongPassword!',
+      };
 
-      await expect(service.login(loginDto)).rejects.toThrow(
-        UnauthorizedException,
+      jest
+        .spyOn(userService, 'findUserByEmailWithPassword')
+        .mockResolvedValue(mockUser as any);
+      jest
+        .spyOn(bcrypt, 'compare')
+        .mockImplementation(() => Promise.resolve(false));
+
+      await expect(
+        service.login(loginDto, mockResponse as any, mockRequest as any),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should require device verification for new devices', async () => {
+      const loginDto: LoginDto = {
+        email: 'test@example.com',
+        password: 'Password123!',
+      };
+
+      jest
+        .spyOn(userService, 'findUserByEmailWithPassword')
+        .mockResolvedValue(mockUser as any);
+      jest.spyOn(userService, 'getUser').mockResolvedValue(mockUser as any);
+      jest
+        .spyOn(service as any, 'generateDeviceFingerprint')
+        .mockReturnValue('new-device-fingerprint');
+
+      const result = await service.login(
+        loginDto,
+        mockResponse as any,
+        mockRequest as any,
       );
+
+      expect(result).toHaveProperty('requiresDeviceVerification', true);
+      expect(userService.updateUser).toHaveBeenCalled();
+      expect(emailService.sendDeviceVerificationEmail).toHaveBeenCalled();
     });
   });
 
-  describe('register', () => {
-    const registerDto = {
-      email: 'test@example.com',
-      username: 'testuser',
-      password: 'password123',
-    };
+  describe('verifyOtp', () => {
+    it('should verify email with valid OTP', async () => {
+      const email = 'test@example.com';
+      const otpCode = '123456';
 
-    it('should create a new user', async () => {
-      userService.createUser.mockResolvedValue(mockUser as unknown as User);
+      const userWithOtp = {
+        ...mockUser,
+        otpCreatedAt: new Date(),
+      };
 
-      const result = await service.register(registerDto);
+      jest
+        .spyOn(userService, 'findUserByEmail')
+        .mockResolvedValue(userWithOtp as any);
+      jest
+        .spyOn(service as any, 'generateDeterministicOtp')
+        .mockReturnValue(otpCode);
 
-      expect(result).toEqual(mockUser);
-      expect(userService.createUser).toHaveBeenCalledWith(registerDto);
+      const result = await service.verifyOtp(email, otpCode);
+
+      expect(result).toBe(true);
+      expect(userService.updateUser).toHaveBeenCalledWith(userWithOtp._id, {
+        isEmailVerified: true,
+        otpCreatedAt: null,
+      });
+      expect(emailService.sendRegistrationEmail).toHaveBeenCalled();
+    });
+
+    it('should throw UnauthorizedException for invalid OTP', async () => {
+      const email = 'test@example.com';
+      const otpCode = '123456';
+
+      const userWithOtp = {
+        ...mockUser,
+        otpCreatedAt: new Date(),
+      };
+
+      jest
+        .spyOn(userService, 'findUserByEmail')
+        .mockResolvedValue(userWithOtp as any);
+      jest
+        .spyOn(service as any, 'generateDeterministicOtp')
+        .mockReturnValue('654321');
+
+      await expect(service.verifyOtp(email, otpCode)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      jest.spyOn(userService, 'findUserByEmail').mockResolvedValue(null);
+
+      await expect(
+        service.verifyOtp('nonexistent@example.com', '123456'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('getProfile', () => {
-    it('should return user profile when user exists', async () => {
-      userService.getUserById.mockResolvedValue(mockUser as unknown as User);
+    it('should return user profile without sensitive fields', async () => {
+      const userId = 'user-id-123';
+      const userWithSensitiveData = {
+        ...mockUser,
+        password: 'hashedPassword',
+        refreshToken: 'someRefreshToken',
+      };
 
-      const result = await service.getProfile('67464220a978f5889273313c');
+      jest
+        .spyOn(userService, 'getUser')
+        .mockResolvedValue(userWithSensitiveData as any);
 
-      expect(result).toEqual(mockUser);
-      expect(userService.getUserById).toHaveBeenCalledWith(
-        '67464220a978f5889273313c',
-      );
+      const result = await service.getProfile(userId);
+
+      expect(result).not.toHaveProperty('password');
+      expect(result).not.toHaveProperty('refreshToken');
+      expect(result).toHaveProperty('email', mockUser.email);
     });
 
-    it('should throw NotFoundException when user does not exist', async () => {
-      userService.getUserById.mockResolvedValue(null);
+    it('should throw NotFoundException if user not found', async () => {
+      jest.spyOn(userService, 'getUser').mockResolvedValue(null);
 
-      await expect(
-        service.getProfile('67464220a978f5889273313c'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getProfile('nonexistent-id')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('logout', () => {
+    it('should clear cookies and update user', async () => {
+      const userId = 'user-id-123';
+
+      await service.logout(userId, mockResponse as any);
+
+      expect(userService.updateUser).toHaveBeenCalledWith(
+        { _id: userId },
+        { refreshToken: null },
+      );
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith('Authentication');
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith('Refresh');
     });
   });
 });

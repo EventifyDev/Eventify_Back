@@ -7,12 +7,15 @@ import { EventRepository } from './repositories/event.repository';
 import { UploadModule } from '../upload/upload.module';
 import { ParticipantModule } from '../participant/participant.module';
 import { NotificationModule } from '@/notifications/notification.module';
+import { TicketModule } from '../ticket/ticket.module';
+
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Event.name, schema: EventSchema }]),
     UploadModule,
     forwardRef(() => ParticipantModule),
     NotificationModule,
+    TicketModule,
   ],
   controllers: [EventController],
   providers: [EventService, EventRepository],

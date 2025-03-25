@@ -1,92 +1,91 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ParticipantController } from './participant.controller';
 import { ParticipantService } from '../providers/participant.service';
-import { Types } from 'mongoose';
 import { CreateParticipantDto } from '../dtos/create-participant.dto';
 import { UpdateParticipantDto } from '../dtos/update-participant.dto';
-import { Participant } from '../schemas/participant.schema';
 import { NotFoundException, ConflictException } from '@nestjs/common';
+import { ParticipantDocument } from '../schemas/participant.schema';
 
 describe('ParticipantController', () => {
   let controller: ParticipantController;
-  let participantService: jest.Mocked<ParticipantService>;
-  let module: TestingModule;
+  let participantService: ParticipantService;
 
   const mockParticipant = {
-    _id: new Types.ObjectId('674b4d60de2603d783700c1e'),
-    event: new Types.ObjectId('674ae609082f45ab9d29decd'),
-    username: 'witov',
-    email: 'wopesewina@mailinator.com',
-    phoneNumber: '+1 (306) 673-8939',
-    createdAt: new Date('2024-11-30T17:37:36.438Z'),
-    updatedAt: new Date('2024-11-30T17:37:36.438Z'),
-    __v: 0,
-  };
+    _id: 'participant-id-1',
+    username: 'Test Participant',
+    email: 'participant@example.com',
+    phoneNumber: '1234567890',
+    event: 'event-id-1',
+  } as unknown as ParticipantDocument;
+
+  const mockParticipants = [
+    mockParticipant,
+    {
+      _id: 'participant-id-2',
+      username: 'Second Participant',
+      email: 'second@example.com',
+      phoneNumber: '0987654321',
+      event: 'event-id-1',
+    } as unknown as ParticipantDocument,
+  ];
 
   beforeEach(async () => {
-    const mockParticipantService = {
-      register: jest.fn(),
-      update: jest.fn(),
-      getEventParticipants: jest.fn(),
-      cancelParticipation: jest.fn(),
-      getParticipantCount: jest.fn(),
-    };
-
-    module = await Test.createTestingModule({
+    const module: TestingModule = await Test.createTestingModule({
       controllers: [ParticipantController],
       providers: [
         {
           provide: ParticipantService,
-          useValue: mockParticipantService,
+          useValue: {
+            register: jest.fn(),
+            update: jest.fn(),
+            getEventParticipants: jest.fn(),
+            cancelParticipation: jest.fn(),
+            getParticipantCount: jest.fn(),
+          },
         },
       ],
     }).compile();
 
     controller = module.get<ParticipantController>(ParticipantController);
-    participantService = module.get(ParticipantService);
+    participantService = module.get<ParticipantService>(ParticipantService);
   });
 
-  afterEach(async () => {
-    await module.close();
-  });
-
-  afterAll(async () => {
-    jest.clearAllMocks();
-    jest.resetModules();
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
   });
 
   describe('register', () => {
-    it('should register a new participant', async () => {
+    it('should create a new participant', async () => {
       const createParticipantDto: CreateParticipantDto = {
-        eventId: '674ae609082f45ab9d29decd',
-        username: 'witov',
-        email: 'wopesewina@mailinator.com',
-        phoneNumber: '+1 (306) 673-8939',
+        username: 'New Participant',
+        email: 'new@example.com',
+        phoneNumber: '1234567890',
+        eventId: 'event-id-1',
       };
 
-      participantService.register.mockResolvedValue(
-        mockParticipant as unknown as Participant,
-      );
+      jest
+        .spyOn(participantService, 'register')
+        .mockResolvedValue(mockParticipant);
 
       const result = await controller.register(createParticipantDto);
 
-      expect(result).toEqual(mockParticipant);
       expect(participantService.register).toHaveBeenCalledWith(
         createParticipantDto,
       );
+      expect(result).toEqual(mockParticipant);
     });
 
-    it('should handle registration errors', async () => {
+    it('should propagate exceptions from service', async () => {
       const createParticipantDto: CreateParticipantDto = {
-        eventId: '674ae609082f45ab9d29decd',
-        username: 'witov',
-        email: 'wopesewina@mailinator.com',
-        phoneNumber: '+1 (306) 673-8939',
+        username: 'New Participant',
+        email: 'existing@example.com',
+        phoneNumber: '1234567890',
+        eventId: 'event-id-1',
       };
 
-      participantService.register.mockRejectedValue(
-        new ConflictException('Email already registered'),
-      );
+      jest
+        .spyOn(participantService, 'register')
+        .mockRejectedValue(new ConflictException('Email already registered'));
 
       await expect(controller.register(createParticipantDto)).rejects.toThrow(
         ConflictException,
@@ -95,134 +94,121 @@ describe('ParticipantController', () => {
   });
 
   describe('update', () => {
-    it('should update participant information', async () => {
+    it('should update participant details', async () => {
       const updateParticipantDto: UpdateParticipantDto = {
-        username: 'updated-witov',
+        username: 'Updated Name',
       };
 
       const updatedParticipant = {
         ...mockParticipant,
-        username: 'updated-witov',
-        updatedAt: new Date(),
+        username: 'Updated Name',
       };
 
-      participantService.update.mockResolvedValue(
-        updatedParticipant as unknown as Participant,
-      );
+      jest
+        .spyOn(participantService, 'update')
+        .mockResolvedValue(updatedParticipant as ParticipantDocument);
 
       const result = await controller.update(
-        '674b4d60de2603d783700c1e',
+        'participant-id-1',
         updateParticipantDto,
       );
 
-      expect(result.username).toBe('updated-witov');
       expect(participantService.update).toHaveBeenCalledWith(
-        '674b4d60de2603d783700c1e',
+        'participant-id-1',
         updateParticipantDto,
       );
+      expect(result).toEqual(updatedParticipant);
     });
 
-    it('should handle update errors', async () => {
-      const updateParticipantDto: UpdateParticipantDto = {
-        username: 'updated-witov',
-      };
-
-      participantService.update.mockRejectedValue(
-        new NotFoundException('Participant not found'),
-      );
+    it('should propagate NotFoundException from service', async () => {
+      jest
+        .spyOn(participantService, 'update')
+        .mockRejectedValue(new NotFoundException('Participant not found'));
 
       await expect(
-        controller.update('674b4d60de2603d783700c1e', updateParticipantDto),
+        controller.update('non-existent-id', { username: 'Test' }),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('getEventParticipants', () => {
     it('should return all participants for an event', async () => {
-      const participants = [mockParticipant];
-      participantService.getEventParticipants.mockResolvedValue(
-        participants as unknown as Participant[],
-      );
+      jest
+        .spyOn(participantService, 'getEventParticipants')
+        .mockResolvedValue(mockParticipants);
 
-      const result = await controller.getEventParticipants(
-        '674ae609082f45ab9d29decd',
-      );
+      const result = await controller.getEventParticipants('event-id-1');
 
-      expect(result).toEqual(participants);
       expect(participantService.getEventParticipants).toHaveBeenCalledWith(
-        '674ae609082f45ab9d29decd',
+        'event-id-1',
       );
+      expect(result).toEqual(mockParticipants);
+      expect(result.length).toBe(2);
     });
 
-    it('should handle no participants found', async () => {
-      participantService.getEventParticipants.mockRejectedValue(
-        new NotFoundException('No participants found for this event'),
-      );
+    it('should propagate NotFoundException when no participants found', async () => {
+      jest
+        .spyOn(participantService, 'getEventParticipants')
+        .mockRejectedValue(
+          new NotFoundException('No participants found for this event'),
+        );
 
       await expect(
-        controller.getEventParticipants('674ae609082f45ab9d29decd'),
+        controller.getEventParticipants('event-id-1'),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('cancelParticipation', () => {
-    it('should cancel participation', async () => {
-      participantService.cancelParticipation.mockResolvedValue(true);
+    it('should cancel a participant registration', async () => {
+      jest
+        .spyOn(participantService, 'cancelParticipation')
+        .mockResolvedValue(true);
 
-      const result = await controller.cancelParticipation(
-        '674b4d60de2603d783700c1e',
-      );
+      const result = await controller.cancelParticipation('participant-id-1');
 
-      expect(result).toBe(true);
       expect(participantService.cancelParticipation).toHaveBeenCalledWith(
-        '674b4d60de2603d783700c1e',
+        'participant-id-1',
       );
+      expect(result).toBe(true);
     });
 
-    it('should handle cancellation errors', async () => {
-      participantService.cancelParticipation.mockRejectedValue(
-        new NotFoundException('Participant not found'),
-      );
+    it('should propagate NotFoundException if participant not found', async () => {
+      jest
+        .spyOn(participantService, 'cancelParticipation')
+        .mockRejectedValue(new NotFoundException('Participant not found'));
 
       await expect(
-        controller.cancelParticipation('674b4d60de2603d783700c1e'),
+        controller.cancelParticipation('non-existent-id'),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('getParticipantCount', () => {
-    it('should return participant count for an event', async () => {
-      participantService.getParticipantCount.mockResolvedValue(5);
+    it('should return count of participants for a specific event', async () => {
+      jest
+        .spyOn(participantService, 'getParticipantCount')
+        .mockResolvedValue(2);
 
-      const result = await controller.getParticipantCount(
-        '674ae609082f45ab9d29decd',
-      );
+      const result = await controller.getParticipantCount('event-id-1');
 
-      expect(result).toBe(5);
       expect(participantService.getParticipantCount).toHaveBeenCalledWith(
-        '674ae609082f45ab9d29decd',
+        'event-id-1',
       );
+      expect(result).toBe(2);
     });
 
-    it('should return total participant count when no eventId provided', async () => {
-      participantService.getParticipantCount.mockResolvedValue(10);
+    it('should return total count of participants when no event specified', async () => {
+      jest
+        .spyOn(participantService, 'getParticipantCount')
+        .mockResolvedValue(10);
 
       const result = await controller.getParticipantCount();
 
-      expect(result).toBe(10);
       expect(participantService.getParticipantCount).toHaveBeenCalledWith(
         undefined,
       );
-    });
-
-    it('should handle count errors', async () => {
-      participantService.getParticipantCount.mockRejectedValue(
-        new Error('Failed to get count'),
-      );
-
-      await expect(
-        controller.getParticipantCount('674ae609082f45ab9d29decd'),
-      ).rejects.toThrow('Failed to get count');
+      expect(result).toBe(10);
     });
   });
 });

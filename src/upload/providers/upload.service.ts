@@ -27,20 +27,16 @@ export class UploadService implements UploadInterface {
       Bucket: process.env.AWS_PUBLIC_BUCKET_NAME,
       Key: `uploads/${uniqueFileName}`,
       Body: file.buffer,
-      //   ACL: 'public-read',
       ContentType: file.mimetype,
     };
 
     try {
-      console.log('Uploading file to S3 with params:', uploadParams);
       const uploadResult = await this.s3.upload(uploadParams).promise();
-      console.log('File uploaded successfully:', uploadResult);
       return {
         url: uploadResult.Location,
         key: uploadResult.Key,
       };
     } catch (error) {
-      console.error('File upload failed:', error);
       throw new Error(`File upload failed: ${error.message}`);
     }
   }

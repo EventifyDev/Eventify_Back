@@ -1,98 +1,201 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AuthController } from './auth.controller';
+import { AuthController } from '../controllers/auth.controller';
 import { AuthService } from '../providers/auth.service';
-import { Types } from 'mongoose';
-import { User } from '../../user/schemas/user.schema';
+import { ConfigService } from '@nestjs/config';
+import { HttpStatus } from '@nestjs/common';
+import { RegisterDto } from '../dtos/register.dto';
+import { LoginDto } from '../dtos/login.dto';
+import { VerifyOtpDto } from '../dtos/verify-otp.dto';
+
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: jest.Mocked<AuthService>;
+  let authService: AuthService;
 
-  const mockUser = {
-    _id: new Types.ObjectId('67464220a978f5889273313c'),
-    email: 'test@example.com',
-    username: 'testuser',
-    password: '$2a$10$.knUxhY/oDGHR1MoCC530.IS0PE1k77cHHnrZa0fB0XsqIvfOSZUy',
-    createdAt: new Date('2024-11-26T21:48:16.809Z'),
-    updatedAt: new Date('2024-11-26T21:48:16.809Z'),
-    __v: 0,
+  // Mock response object
+  const mockResponse = {
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn().mockReturnThis(),
+    cookie: jest.fn().mockReturnThis(),
+    clearCookie: jest.fn().mockReturnThis(),
   };
 
-  const mockLoginResponse = {
-    access_token: 'mock-jwt-token',
-    userId: mockUser._id,
+  // Mock request object
+  const mockRequest = {
+    user: { _id: 'user-id' },
+    cookies: {},
+    headers: { authorization: '' },
   };
 
   beforeEach(async () => {
-    const mockAuthService = {
-      register: jest.fn(),
-      login: jest.fn(),
-      getProfile: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         {
           provide: AuthService,
-          useValue: mockAuthService,
+          useValue: {
+            register: jest.fn(),
+            login: jest.fn(),
+            verifyOtp: jest.fn(),
+            resendOtp: jest.fn(),
+            verifyDevice: jest.fn(),
+            forgotPassword: jest.fn(),
+            resetPassword: jest.fn(),
+            getProfile: jest.fn(),
+            refreshTokens: jest.fn(),
+            logout: jest.fn(),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockReturnValue('http://localhost:3000'),
+          },
         },
       ],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get(AuthService);
+    authService = module.get<AuthService>(AuthService);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
   });
 
   describe('register', () => {
-    const registerDto = {
-      email: 'test@example.com',
-      username: 'testuser',
-      password: 'password123',
-    };
+    it('should call authService.register with registerDto', async () => {
+      const registerDto: RegisterDto = {
+        email: 'test@example.com',
+        password: 'Password123!',
+        username: 'testuser',
+        role: 'Participant',
+      };
 
-    it('should register a new user', async () => {
-      authService.register.mockResolvedValue(mockUser as unknown as User);
+      const expectedResult = {
+        _id: 'user-id-123',
+        email: 'test@example.com',
+        username: 'testuser',
+        role: 'Participant',
+        isEmailVerified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        verifiedDevices: [],
+      };
+
+      jest
+        .spyOn(authService, 'register')
+        .mockResolvedValue(expectedResult as any);
 
       const result = await controller.register(registerDto);
 
       expect(authService.register).toHaveBeenCalledWith(registerDto);
-      expect(result).toEqual(mockUser);
+      expect(result).toEqual(expectedResult);
     });
   });
 
   describe('login', () => {
-    const loginDto = {
-      email: 'test@example.com',
-      password: 'password123',
-    };
+    it('should return device verification response when required', async () => {
+      const loginDto: LoginDto = {
+        email: 'test@example.com',
+        password: 'Password123!',
+      };
 
-    it('should login user and return access token', async () => {
-      authService.login.mockResolvedValue(mockLoginResponse);
+      jest.spyOn(authService, 'login').mockResolvedValue({
+        requiresDeviceVerification: true,
+        email: loginDto.email,
+      } as any);
 
-      const result = await controller.login(loginDto);
+      await controller.login(loginDto, mockResponse as any, mockRequest as any);
 
-      expect(authService.login).toHaveBeenCalledWith(loginDto);
-      expect(result).toEqual(mockLoginResponse);
-      expect(result).toHaveProperty('access_token');
-      expect(result).toHaveProperty('userId');
+      expect(authService.login).toHaveBeenCalledWith(
+        loginDto,
+        mockResponse,
+        mockRequest,
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.OK);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        requiresDeviceVerification: true,
+        email: loginDto.email,
+        message: 'Device verification required',
+      });
+    });
+
+    it('should return login result when successful', async () => {
+      const loginDto: LoginDto = {
+        email: 'test@example.com',
+        password: 'Password123!',
+      };
+
+      const loginResult = {
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        user: { id: 'user-id', email: 'test@example.com' },
+      };
+
+      jest.spyOn(authService, 'login').mockResolvedValue(loginResult as any);
+
+      await controller.login(loginDto, mockResponse as any, mockRequest as any);
+
+      expect(authService.login).toHaveBeenCalledWith(
+        loginDto,
+        mockResponse,
+        mockRequest,
+      );
+      expect(mockResponse.json).toHaveBeenCalledWith(loginResult);
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('should call authService.verifyOtp with correct params', async () => {
+      const verifyOtpDto: VerifyOtpDto = {
+        email: 'test@example.com',
+        otpCode: '123456',
+      };
+
+      jest.spyOn(authService, 'verifyOtp').mockResolvedValue(true);
+
+      const result = await controller.verifyOtp(verifyOtpDto);
+
+      expect(authService.verifyOtp).toHaveBeenCalledWith(
+        verifyOtpDto.email,
+        verifyOtpDto.otpCode,
+      );
+      expect(result).toEqual({
+        success: true,
+        message: 'Email verified successfully',
+      });
     });
   });
 
   describe('getProfile', () => {
-    const userId = '67464220a978f5889273313c';
+    it('should call authService.getProfile with userId', async () => {
+      const userId = 'user-id';
+      const profileData = { id: userId, email: 'test@example.com' };
 
-    it('should return user profile', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, ...userWithoutPassword } = mockUser;
-      authService.getProfile.mockResolvedValue(
-        userWithoutPassword as unknown as User,
-      );
+      jest
+        .spyOn(authService, 'getProfile')
+        .mockResolvedValue(profileData as any);
 
       const result = await controller.getProfile(userId);
 
       expect(authService.getProfile).toHaveBeenCalledWith(userId);
-      expect(result).toEqual(userWithoutPassword);
-      expect(result).not.toHaveProperty('password');
+      expect(result).toEqual(profileData);
+    });
+  });
+
+  describe('logout', () => {
+    it('should clear cookies and call authService.logout', async () => {
+      jest.spyOn(authService, 'logout').mockResolvedValue(undefined);
+
+      const result = await controller.logout(
+        mockRequest as any,
+        mockResponse as any,
+      );
+
+      expect(authService.logout).toHaveBeenCalledWith('user-id', mockResponse);
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith('Authentication');
+      expect(mockResponse.clearCookie).toHaveBeenCalledWith('Refresh');
+      expect(result).toEqual({ success: true });
     });
   });
 });

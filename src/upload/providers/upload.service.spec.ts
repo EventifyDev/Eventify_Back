@@ -1,55 +1,78 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UploadService } from './upload.service';
-import { ConfigModule } from '@nestjs/config';
+import { S3 } from 'aws-sdk';
 
-const mockS3Instance = {
-  upload: jest.fn().mockReturnThis(),
-  promise: jest.fn(),
-};
+jest.mock('aws-sdk', () => {
+  const mockUploadPromise = jest.fn();
+  const mockUpload = jest.fn().mockImplementation(() => ({
+    promise: mockUploadPromise,
+  }));
 
-jest.mock('aws-sdk', () => ({
-  S3: jest.fn(() => mockS3Instance),
-}));
+  return {
+    S3: jest.fn().mockImplementation(() => ({
+      upload: mockUpload,
+    })),
+  };
+});
 
 describe('UploadService', () => {
   let service: UploadService;
+  let s3Mock: jest.Mocked<S3>;
+
+  const mockFile: Express.Multer.File = {
+    fieldname: 'file',
+    originalname: 'test-image.jpg',
+    encoding: '7bit',
+    mimetype: 'image/jpeg',
+    buffer: Buffer.from('mock file content'),
+    size: 1234,
+    stream: null,
+    destination: '',
+    filename: '',
+    path: '',
+  };
+
+  const mockS3Response = {
+    Location:
+      'https://bucket-name.s3.amazonaws.com/uploads/uuid-test-image.jpg',
+    Key: 'uploads/uuid-test-image.jpg',
+    Bucket: 'bucket-name',
+    ETag: '"mock-etag"',
+  };
 
   beforeEach(async () => {
+    process.env.AWS_REGION = 'us-east-1';
+    process.env.AWS_ACCESS_KEY_ID = 'test-access-key';
+    process.env.AWS_SECRET_ACCESS_KEY = 'test-secret-key';
+    process.env.AWS_PUBLIC_BUCKET_NAME = 'bucket-name';
+
     const module: TestingModule = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot()],
       providers: [UploadService],
     }).compile();
 
     service = module.get<UploadService>(UploadService);
-    mockS3Instance.upload.mockClear();
-    mockS3Instance.promise.mockClear();
+    s3Mock = new S3() as jest.Mocked<S3>;
+
+    const mockUploadPromise = s3Mock.upload({} as any).promise as jest.Mock;
+    mockUploadPromise.mockResolvedValue(mockS3Response);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
   });
 
   describe('uploadFile', () => {
-    it('should successfully upload a file to S3', async () => {
-      const mockFile: Express.Multer.File = {
-        fieldname: 'file',
-        originalname: 'test-image.jpg',
-        encoding: '7bit',
-        mimetype: 'image/jpeg',
-        buffer: Buffer.from('mock file content'),
-        size: 1024,
-        destination: '',
-        filename: '',
-        path: '',
-        stream: null,
-      };
-
-      const mockS3Response = {
-        Location: 'https://bucket.s3.amazonaws.com/uploads/test-image.jpg',
-        Key: 'uploads/test-image.jpg',
-        Bucket: 'test-bucket',
-      };
-
-      mockS3Instance.upload.mockReturnThis();
-      mockS3Instance.promise.mockResolvedValueOnce(mockS3Response);
+    it('should upload a file to S3 and return the url and key', async () => {
+      jest.spyOn(global.Math, 'random').mockReturnValue(0.123456789);
 
       const result = await service.uploadFile(mockFile);
+
+      const uploadMock = s3Mock.upload({} as any);
+      expect(uploadMock.promise).toHaveBeenCalled();
 
       expect(result).toEqual({
         url: mockS3Response.Location,
@@ -57,25 +80,12 @@ describe('UploadService', () => {
       });
     });
 
-    it('should throw an error when upload fails', async () => {
-      const mockFile: Express.Multer.File = {
-        fieldname: 'file',
-        originalname: 'test-image.jpg',
-        encoding: '7bit',
-        mimetype: 'image/jpeg',
-        buffer: Buffer.from('mock file content'),
-        size: 1024,
-        destination: '',
-        filename: '',
-        path: '',
-        stream: null,
-      };
-
-      mockS3Instance.upload.mockReturnThis();
-      mockS3Instance.promise.mockRejectedValueOnce(new Error('Upload failed'));
+    it('should throw an error if S3 upload fails', async () => {
+      const mockUploadPromise = s3Mock.upload({} as any).promise as jest.Mock;
+      mockUploadPromise.mockRejectedValue(new Error('S3 upload failed'));
 
       await expect(service.uploadFile(mockFile)).rejects.toThrow(
-        'File upload failed: Upload failed',
+        'File upload failed: S3 upload failed',
       );
     });
   });

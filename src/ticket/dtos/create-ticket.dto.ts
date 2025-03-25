@@ -1,65 +1,45 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsEnum,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Min,
-  IsMongoId,
-  IsBoolean,
-} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsEnum, IsNotEmpty, IsNumber, Min, IsMongoId } from 'class-validator';
 import { TicketType } from '../enums/ticket-type.enum';
+import { TicketStatus } from '../enums/ticket-status.enum';
 
 export class CreateTicketDto {
-  @ApiProperty({ description: 'Ticket name/description' })
-  @IsNotEmpty()
-  @IsString()
-  name: string;
-
-  @ApiProperty({ description: 'Ticket description' })
-  @IsNotEmpty()
-  @IsString()
-  description: string;
-
-  @ApiProperty({ enum: TicketType, description: 'Type of ticket' })
-  @IsNotEmpty()
-  @IsEnum(TicketType)
-  type: TicketType;
-
-  @ApiProperty({ description: 'Ticket price' })
-  @IsNotEmpty()
-  @IsNumber()
-  @Min(0)
-  price: number;
-
-  @ApiProperty({ description: 'Associated event ID' })
-  @IsNotEmpty()
+  @ApiProperty({ description: 'ID of the associated event' })
   @IsMongoId()
+  @IsNotEmpty()
   event: string;
 
-  @ApiPropertyOptional({
-    description: 'Whether the ticket can be transferred to another user',
+  @ApiProperty({
+    enum: TicketType,
+    description: 'Type of ticket (e.g., VIP, STANDARD, etc.)',
   })
-  @IsOptional()
-  @IsBoolean()
-  transferable?: boolean;
+  @IsEnum(TicketType)
+  @IsNotEmpty()
+  type: TicketType;
 
-  @ApiPropertyOptional({
-    description: 'Maximum quantity of tickets that can be sold',
+  @ApiProperty({
+    description: 'Price of the ticket',
+    minimum: 0,
   })
-  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @IsNotEmpty()
+  price: number;
+
+  @ApiProperty({
+    description: 'Number of tickets available',
+    minimum: 1,
+  })
   @IsNumber()
   @Min(1)
-  quantity?: number;
+  @IsNotEmpty()
+  quantity: number;
 
-  @ApiPropertyOptional({
-    description: 'Additional metadata for custom ticket types',
+  @ApiProperty({
+    enum: TicketStatus,
+    description: 'Status of the ticket',
   })
-  @IsOptional()
-  metadata?: Record<string, any>;
-
-  @ApiPropertyOptional({ description: 'Expiration date of the ticket' })
-  @IsOptional()
-  expiresAt?: Date;
+  @IsEnum(TicketStatus)
+  @IsNotEmpty()
+  status: TicketStatus;
 }

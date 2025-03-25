@@ -9,6 +9,7 @@ import {
   UseGuards,
   HttpStatus,
   HttpCode,
+  Put,
 } from '@nestjs/common';
 import { RoleService } from '../providers/role.service';
 import { CreateRoleDto } from '../dtos/create-role.dto';
@@ -21,7 +22,9 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
+import { Role } from '../schemas/role.schema';
 
 @ApiTags('roles')
 @Controller('roles')
@@ -73,20 +76,23 @@ export class RolesController {
     return this.rolesService.findOne(id);
   }
 
-  @Patch(':id')
+  @Put(':id')
+  @UseGuards(JwtAuthGuard)
   @RequirePermissions('manage:roles')
   @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a role' })
+  @ApiParam({ name: 'id', type: String })
   @ApiResponse({
-    status: HttpStatus.OK,
+    status: 200,
     description: 'Role updated successfully',
+    type: Role,
   })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Role not found' })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'Insufficient permissions',
-  })
-  async update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
+  @ApiResponse({ status: 404, description: 'Role not found' })
+  async updateRole(
+    @Param('id') id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ): Promise<Role> {
     return this.rolesService.update(id, updateRoleDto);
   }
 
