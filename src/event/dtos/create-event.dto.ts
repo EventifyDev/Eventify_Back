@@ -7,16 +7,21 @@ import {
   Min,
   Max,
   IsEnum,
+  IsArray,
+  ValidateNested,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsFutureDate } from '../../common/decorators/is-future-date.decorator';
+import { EventTicketDto } from './event-ticket.dto';
 
 export enum EventType {
   SPORT = 'SPORT',
   CULTURAL = 'CULTURAL',
   PROFESSIONAL = 'PROFESSIONAL',
   SOCIAL = 'SOCIAL',
+  MUSIC = 'MUSIC',
   OTHER = 'OTHER',
 }
 
@@ -92,4 +97,15 @@ export class CreateEventDto {
     required: true,
   })
   image?: Express.Multer.File | string;
+
+  @ApiProperty({
+    type: [EventTicketDto],
+    description: 'Array of tickets for the event',
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EventTicketDto)
+  tickets?: EventTicketDto[];
 }

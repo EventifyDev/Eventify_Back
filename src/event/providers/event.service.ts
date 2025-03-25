@@ -11,8 +11,10 @@ import { EventDocument } from '../schemas/event.schema';
 import { IEventService } from '../interfaces/event.interface';
 import { UploadService } from '../../upload/providers/upload.service';
 import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
-import { NotificationService } from '@/notifications/providers/notification.service';
+import { NotificationService } from '../../notifications/providers/notification.service';
 import { Types } from 'mongoose';
+import { TicketService } from '../../ticket/providers/ticket.service';
+import { TicketStatus } from '../../ticket/enums/ticket-status.enum';
 
 @Injectable()
 export class EventService implements IEventService {
@@ -22,6 +24,7 @@ export class EventService implements IEventService {
     private readonly eventRepository: EventRepository,
     private readonly uploadService: UploadService,
     private readonly notificationService: NotificationService,
+    private readonly ticketService: TicketService,
   ) {}
 
   async findAll(): Promise<EventDocument[]> {
@@ -37,7 +40,17 @@ export class EventService implements IEventService {
     if (!event) {
       throw new NotFoundException('Event not found');
     }
-    return event;
+
+    const tickets = await this.ticketService.getTicketsByEventId(
+      event._id.toString(),
+    );
+
+    const eventWithTickets = {
+      ...event.toObject(),
+      tickets: tickets,
+    };
+
+    return eventWithTickets as EventDocument;
   }
 
   async findByUserId(userId: string): Promise<EventDocument[]> {
@@ -145,6 +158,22 @@ export class EventService implements IEventService {
     };
 
     const createdEvent = await this.eventRepository.create(eventData);
+
+    // Créer les tickets pour l'événement
+    if (createEventDto.tickets && createEventDto.tickets.length > 0) {
+      await Promise.all(
+        createEventDto.tickets.map((ticketDto) =>
+          this.ticketService.createTicket({
+            event: createdEvent._id.toString(),
+            type: ticketDto.type,
+            price: ticketDto.price,
+            quantity: ticketDto.quantity,
+            status: TicketStatus.AVAILABLE,
+          }),
+        ),
+      );
+    }
+
     await this.notifyAdminsAboutNewEvent(createdEvent);
 
     return createdEvent;
@@ -238,7 +267,6 @@ export class EventService implements IEventService {
 
       return this.eventRepository.update(id, updateEventDto);
     } catch (error) {
-      console.error('Error updating event:', error);
       throw new BadRequestException(`Failed to update event: ${error.message}`);
     }
   }

@@ -27,61 +27,29 @@ export class Payment {
   @Prop({ required: true })
   amount: number;
 
-  @ApiProperty({ description: 'Payment currency' })
-  @Prop({ required: true, default: 'EUR' })
-  currency: string;
-
-  @ApiProperty({ description: 'Payment description' })
-  @Prop({ required: true })
-  description: string;
-
   @ApiProperty({ description: 'Payment status' })
   @Prop({ required: true, enum: PaymentStatus, default: PaymentStatus.PENDING })
   status: PaymentStatus;
-
-  @ApiProperty({ description: 'Payment provider (e.g., Mollie)' })
-  @Prop({ required: true, default: 'mollie' })
-  provider: string;
 
   @ApiProperty({ description: 'Payment provider transaction ID' })
   @Prop({ required: true })
   providerTransactionId: string;
 
   @ApiProperty({ description: 'Checkout URL for the payment' })
-  @Prop()
+  @Prop({ required: true })
   checkoutUrl: string;
 
-  @ApiProperty({ description: 'Redirect URL after payment' })
+  @ApiProperty({ description: 'Redirect URL after payment completion' })
   @Prop({ required: true })
   redirectUrl: string;
 
-  @ApiProperty({ description: 'Webhook URL for payment notifications' })
-  @Prop({ required: true })
-  webhookUrl: string;
-
-  @ApiProperty({ description: 'Payment metadata' })
-  @Prop({ type: Object })
+  @ApiProperty({ description: 'Additional payment metadata' })
+  @Prop({ type: Object, default: {} })
   metadata: Record<string, any>;
 
   @ApiProperty({ description: 'Payment creation date' })
-  @Prop()
+  @Prop({ required: true })
   createdAt: Date;
-
-  @ApiProperty({ description: 'Payment last update date' })
-  @Prop()
-  updatedAt: Date;
-
-  @ApiProperty({ description: 'Payment completion date' })
-  @Prop()
-  paidAt: Date;
-
-  @ApiProperty({ description: 'Payment cancellation date' })
-  @Prop()
-  canceledAt: Date;
-
-  @ApiProperty({ description: 'Payment expiration date' })
-  @Prop()
-  expiresAt: Date;
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);

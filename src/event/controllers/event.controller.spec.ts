@@ -2,241 +2,284 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventController } from './event.controller';
 import { EventService } from '../providers/event.service';
 import { ParticipantService } from '../../participant/providers/participant.service';
-import { Types } from 'mongoose';
-import { SearchEventResponseDto } from '../dtos/search-event.response.dto';
-import { Event } from '../schemas/event.schema';
-import { Participant } from '../../participant/schemas/participant.schema';
-import { CreateEventDto } from '../dtos/create-event.dto';
+import { CreateEventDto, EventType } from '../dtos/create-event.dto';
+import { UpdateEventDto } from '../dtos/update-event.dto';
+import { NotificationService } from '../../notifications/providers/notification.service';
+import { TicketService } from '../../ticket/providers/ticket.service';
 
 describe('EventController', () => {
   let controller: EventController;
-  let eventService: jest.Mocked<EventService>;
-  let participantService: jest.Mocked<ParticipantService>;
+  let eventService: EventService;
+  let participantService: ParticipantService;
 
   const mockEvent = {
-    _id: new Types.ObjectId('674aee48082f45ab9d2e3fa9'),
-    organizer: new Types.ObjectId('67482c7bcc7eec710127f1aa'),
-    name: 'Brandon Harper',
-    description: 'Nesciunt omnis dele Nesciunt omnis dele',
-    date: new Date('2027-11-12T16:51:00.000Z'),
-    capacity: 77,
-    location: 'Alias id adipisicing',
-    eventType: 'SPORT',
-    image:
-      'https://eventify-images.s3.amazonaws.com/uploads/c879cc42-4708-4381-abfc-9c5a9b63b232.png',
-    createdAt: new Date('2024-11-30T10:51:52.733Z'),
-    updatedAt: new Date('2024-11-30T13:56:31.616Z'),
-    __v: 0,
+    _id: 'event-id-1',
+    name: 'Test Event',
+    description: 'Test Description',
+    date: new Date(),
+    location: 'Test Location',
+    organizerId: 'organizer-id-1',
+    status: 'pending',
+    imageUrl: 'https://example.com/image.jpg',
   };
 
-  const mockParticipant = {
-    _id: new Types.ObjectId('674b4d60de2603d783700c1e'),
-    event: new Types.ObjectId('674ae609082f45ab9d29decd'),
-    username: 'witov',
-    email: 'wopesewina@mailinator.com',
-    phoneNumber: '+1 (306) 673-8939',
-    createdAt: new Date('2024-11-30T17:37:36.438Z'),
-    updatedAt: new Date('2024-11-30T17:37:36.438Z'),
-    __v: 0,
+  const mockEvents = [
+    mockEvent,
+    {
+      _id: 'event-id-2',
+      name: 'Test Event 2',
+      description: 'Test Description 2',
+      date: new Date(),
+      location: 'Test Location 2',
+      organizerId: 'organizer-id-1',
+      status: 'approved',
+      imageUrl: 'https://example.com/image2.jpg',
+    },
+  ];
+
+  const mockParticipants = [
+    {
+      _id: 'participant-id-1',
+      userId: 'user-id-1',
+      eventId: 'event-id-1',
+      status: 'confirmed',
+    },
+    {
+      _id: 'participant-id-2',
+      userId: 'user-id-2',
+      eventId: 'event-id-1',
+      status: 'pending',
+    },
+  ];
+
+  const mockFile: Express.Multer.File = {
+    fieldname: 'image',
+    originalname: 'test-image.jpg',
+    encoding: '7bit',
+    mimetype: 'image/jpeg',
+    buffer: Buffer.from('mock image content'),
+    size: 1234,
+    stream: null,
+    destination: '',
+    filename: '',
+    path: '',
   };
 
   beforeEach(async () => {
-    const mockEventService = {
-      search: jest.fn(),
-      findAll: jest.fn(),
-      findById: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-      findByOrganizerId: jest.fn(),
-    };
-
-    const mockParticipantService = {
-      getEventParticipants: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       controllers: [EventController],
       providers: [
-        { provide: EventService, useValue: mockEventService },
-        { provide: ParticipantService, useValue: mockParticipantService },
+        {
+          provide: EventService,
+          useValue: {
+            search: jest.fn(),
+            findAll: jest.fn(),
+            findById: jest.fn(),
+            findByUserId: jest.fn(),
+            findByOrganizerId: jest.fn(),
+            create: jest.fn(),
+            update: jest.fn(),
+            delete: jest.fn(),
+            approveEvent: jest.fn(),
+            rejectEvent: jest.fn(),
+            getPendingEvents: jest.fn(),
+          },
+        },
+        {
+          provide: ParticipantService,
+          useValue: {
+            getEventParticipants: jest.fn(),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: {
+            sendNotification: jest.fn(),
+            notifyAdmins: jest.fn(),
+          },
+        },
+        {
+          provide: TicketService,
+          useValue: {
+            getTicketsByEventId: jest.fn(),
+            createTicket: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     controller = module.get<EventController>(EventController);
-    eventService = module.get(EventService);
-    participantService = module.get(ParticipantService);
+    eventService = module.get<EventService>(EventService);
+    participantService = module.get<ParticipantService>(ParticipantService);
   });
 
-  describe('search', () => {
-    it('should search events', async () => {
-      const searchResults = [mockEvent];
-      eventService.search.mockResolvedValue(
-        searchResults as unknown as SearchEventResponseDto[],
-      );
-
-      const result = await controller.search('sport');
-      expect(result).toEqual(searchResults);
-      expect(eventService.search).toHaveBeenCalledWith('sport');
-    });
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
   });
 
   describe('findAll', () => {
-    it('should return all events with pagination', async () => {
-      const events = [mockEvent];
-      eventService.findAll.mockResolvedValue(events as unknown as Event[]);
+    it('should return an array of events', async () => {
+      jest.spyOn(eventService, 'findAll').mockResolvedValue(mockEvents as any);
 
-      const result = await controller.findAll(
-        '67482c7bcc7eec710127f1aa',
-        1,
-        10,
-      );
-      expect(result).toEqual(events);
-      expect(eventService.findAll).toHaveBeenCalledWith(
-        '67482c7bcc7eec710127f1aa',
-        1,
-        10,
-      );
+      const result = await controller.findAll();
+
+      expect(eventService.findAll).toHaveBeenCalled();
+      expect(result).toEqual(mockEvents);
     });
   });
 
   describe('findById', () => {
-    it('should return an event by id', async () => {
-      eventService.findById.mockResolvedValue(mockEvent as unknown as Event);
+    it('should return a single event', async () => {
+      jest.spyOn(eventService, 'findById').mockResolvedValue(mockEvent as any);
 
-      const result = await controller.findById('674aee48082f45ab9d2e3fa9');
+      const result = await controller.findById('event-id-1');
+
+      expect(eventService.findById).toHaveBeenCalledWith('event-id-1');
       expect(result).toEqual(mockEvent);
-      expect(eventService.findById).toHaveBeenCalledWith(
-        '674aee48082f45ab9d2e3fa9',
-      );
+    });
+  });
+
+  describe('search', () => {
+    it('should return search results', async () => {
+      jest.spyOn(eventService, 'search').mockResolvedValue(mockEvents as any);
+
+      const result = await controller.search('test query');
+
+      expect(eventService.search).toHaveBeenCalledWith('test query');
+      expect(result).toEqual(mockEvents);
     });
   });
 
   describe('create', () => {
-    it('should create a new event', async () => {
-      const createEventDto = {
-        name: 'Brandon Harper',
-        description: 'Nesciunt omnis dele Nesciunt omnis dele',
-        date: new Date('2027-11-12T16:51:00.000Z'),
-        capacity: 77,
-        location: 'Alias id adipisicing',
-        eventType: 'SPORT',
-      };
-
-      const mockFile: Express.Multer.File = {
-        fieldname: 'image',
-        originalname: 'test.png',
-        encoding: '7bit',
-        mimetype: 'image/png',
-        buffer: Buffer.from('test'),
-        size: 1024,
-        destination: '',
-        filename: '',
-        path: '',
-        stream: null,
+    it('should create and return a new event', async () => {
+      const createEventDto: CreateEventDto = {
+        name: 'New Event',
+        description: 'New Description',
+        date: new Date(),
+        location: 'New Location',
+        eventType: EventType.CULTURAL,
+        capacity: 100,
+        tickets: [],
       };
 
       const mockRequest = {
-        user: { id: '67482c7bcc7eec710127f1aa' },
+        user: { userId: 'user-id-1' },
       };
 
-      eventService.create.mockResolvedValue(mockEvent as unknown as Event);
+      jest.spyOn(eventService, 'create').mockResolvedValue(mockEvent as any);
 
       const result = await controller.create(
-        createEventDto as unknown as CreateEventDto,
+        createEventDto,
         mockRequest,
         mockFile,
       );
-      expect(result).toEqual(mockEvent);
+
       expect(eventService.create).toHaveBeenCalledWith(
         createEventDto,
-        '67482c7bcc7eec710127f1aa',
+        'user-id-1',
         mockFile,
       );
+      expect(result).toEqual(mockEvent);
     });
   });
 
   describe('update', () => {
-    it('should update an event', async () => {
-      const updateEventDto = {
-        name: 'Updated Event Name',
-        capacity: 100,
+    it('should update and return an event', async () => {
+      const updateEventDto: UpdateEventDto = {
+        name: 'Updated Event',
       };
 
-      const mockFile: Express.Multer.File = {
-        fieldname: 'image',
-        originalname: 'updated.png',
-        encoding: '7bit',
-        mimetype: 'image/png',
-        buffer: Buffer.from('test'),
-        size: 1024,
-        destination: '',
-        filename: '',
-        path: '',
-        stream: null,
-      };
-
-      const updatedEvent = { ...mockEvent, ...updateEventDto };
-      eventService.update.mockResolvedValue(updatedEvent as unknown as Event);
+      jest.spyOn(eventService, 'update').mockResolvedValue({
+        ...mockEvent,
+        name: 'Updated Event',
+      } as any);
 
       const result = await controller.update(
-        '674aee48082f45ab9d2e3fa9',
+        'event-id-1',
         updateEventDto,
         mockFile,
       );
-      expect(result.name).toBe('Updated Event Name');
-      expect(result.capacity).toBe(100);
+
       expect(eventService.update).toHaveBeenCalledWith(
-        '674aee48082f45ab9d2e3fa9',
+        'event-id-1',
         updateEventDto,
         mockFile,
       );
+      expect(result).toHaveProperty('name', 'Updated Event');
     });
   });
 
   describe('delete', () => {
-    it('should delete an event', async () => {
-      eventService.delete.mockResolvedValue(true);
+    it('should call the delete method', async () => {
+      jest.spyOn(eventService, 'delete').mockResolvedValue(undefined);
 
-      const result = await controller.delete('674aee48082f45ab9d2e3fa9');
-      expect(result).toBe(true);
-      expect(eventService.delete).toHaveBeenCalledWith(
-        '674aee48082f45ab9d2e3fa9',
-      );
+      await controller.delete('event-id-1');
+
+      expect(eventService.delete).toHaveBeenCalledWith('event-id-1');
     });
   });
 
-  describe('findByOrganizerId', () => {
-    it('should return events by organizer id', async () => {
-      const events = [mockEvent];
-      eventService.findByOrganizerId.mockResolvedValue(
-        events as unknown as Event[],
+  describe('approveEvent', () => {
+    it('should approve an event', async () => {
+      const mockRequest = {
+        user: { userId: 'admin-id' },
+      };
+
+      jest.spyOn(eventService, 'approveEvent').mockResolvedValue({
+        ...mockEvent,
+        status: 'approved',
+      } as any);
+
+      const result = await controller.approveEvent('event-id-1', mockRequest);
+
+      expect(eventService.approveEvent).toHaveBeenCalledWith(
+        'event-id-1',
+        'admin-id',
+      );
+      expect(result).toHaveProperty('status', 'approved');
+    });
+  });
+
+  describe('rejectEvent', () => {
+    it('should reject an event', async () => {
+      const mockRequest = {
+        user: { userId: 'admin-id' },
+      };
+      const reason = 'Rejection reason';
+
+      jest.spyOn(eventService, 'rejectEvent').mockResolvedValue({
+        ...mockEvent,
+        status: 'rejected',
+        rejectionReason: reason,
+      } as any);
+
+      const result = await controller.rejectEvent(
+        'event-id-1',
+        mockRequest,
+        reason,
       );
 
-      const result = await controller.findByOrganizerId(
-        '67482c7bcc7eec710127f1aa',
+      expect(eventService.rejectEvent).toHaveBeenCalledWith(
+        'event-id-1',
+        'admin-id',
+        reason,
       );
-      expect(result).toEqual(events);
-      expect(eventService.findByOrganizerId).toHaveBeenCalledWith(
-        '67482c7bcc7eec710127f1aa',
-      );
+      expect(result).toHaveProperty('status', 'rejected');
     });
   });
 
   describe('getEventParticipants', () => {
     it('should return participants for an event', async () => {
-      const participants = [mockParticipant];
-      participantService.getEventParticipants.mockResolvedValue(
-        participants as unknown as Participant[],
-      );
+      jest
+        .spyOn(participantService, 'getEventParticipants')
+        .mockResolvedValue(mockParticipants as any);
 
-      const result = await controller.getEventParticipants(
-        '674ae609082f45ab9d29decd',
-      );
-      expect(result).toEqual(participants);
+      const result = await controller.getEventParticipants('event-id-1');
+
       expect(participantService.getEventParticipants).toHaveBeenCalledWith(
-        '674ae609082f45ab9d29decd',
+        'event-id-1',
       );
+      expect(result).toEqual(mockParticipants);
     });
   });
 });

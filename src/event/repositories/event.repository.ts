@@ -14,7 +14,7 @@ export class EventRepository implements IEventRepository {
   ) {}
 
   async findAll(): Promise<EventDocument[]> {
-    return this.eventModel.find().exec();
+    return this.eventModel.find({ isApproved: true }).exec();
   }
 
   async findById(id: string): Promise<EventDocument | null> {

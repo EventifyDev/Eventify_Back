@@ -18,7 +18,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { TicketService } from '../providers/ticket.service';
-// import { CreateTicketDto } from '../dtos/create-ticket.dto';
+import { CreateTicketDto } from '../dtos/create-ticket.dto';
 import { UpdateTicketDto } from '../dtos/update-ticket.dto';
 import { PurchaseTicketDto } from '../dtos/purchase-ticket.dto';
 import { Ticket } from '../schemas/ticket.schema';
@@ -29,30 +29,19 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 export class TicketController {
   constructor(private readonly ticketService: TicketService) {}
 
-  // @Post()
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
-  // @ApiOperation({ summary: 'Create a new ticket' })
-  // @ApiResponse({
-  //   status: 201,
-  //   description: 'Ticket created successfully',
-  //   type: Ticket,
-  // })
-  // async createTicket(
-  //   @Body() createTicketDto: CreateTicketDto,
-  // ): Promise<Ticket> {
-  //   return this.ticketService.createTicket(createTicketDto);
-  // }
-
-  @Get()
-  @ApiOperation({ summary: 'Get all tickets' })
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a new ticket' })
   @ApiResponse({
-    status: 200,
-    description: 'List of all tickets',
-    type: [Ticket],
+    status: 201,
+    description: 'Ticket created successfully',
+    type: Ticket,
   })
-  async getAllTickets(): Promise<Ticket[]> {
-    return this.ticketService.getAllTickets();
+  async createTicket(
+    @Body() createTicketDto: CreateTicketDto,
+  ): Promise<Ticket> {
+    return this.ticketService.createTicket(createTicketDto);
   }
 
   @Get('event/:eventId')
@@ -81,19 +70,6 @@ export class TicketController {
     @Param('eventId') eventId: string,
   ): Promise<Ticket[]> {
     return this.ticketService.getAvailableTicketsForEvent(eventId);
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get ticket by ID' })
-  @ApiParam({ name: 'id', type: String })
-  @ApiResponse({
-    status: 200,
-    description: 'Ticket found',
-    type: Ticket,
-  })
-  @ApiResponse({ status: 404, description: 'Ticket not found' })
-  async getTicketById(@Param('id') id: string): Promise<Ticket> {
-    return this.ticketService.getTicketById(id);
   }
 
   @Put(':id')
@@ -140,18 +116,4 @@ export class TicketController {
   ): Promise<Ticket> {
     return this.ticketService.purchaseTicket(purchaseTicketDto);
   }
-
-  // @Get(':id/qr-code')
-  // @UseGuards(JwtAuthGuard)
-  // @ApiBearerAuth()
-  // @ApiOperation({ summary: 'Get QR code for a ticket' })
-  // @ApiParam({ name: 'id', type: String })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'QR code generated successfully',
-  // })
-  // async getQRCode(@Param('id') id: string): Promise<{ qrCode: string }> {
-  //   const qrCode = await this.ticketService.generateQRCode(id);
-  //   return { qrCode };
-  // }
 }

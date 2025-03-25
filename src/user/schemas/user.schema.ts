@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
 import { ApiProperty } from '@nestjs/swagger';
-import { Role } from '@/roles/schemas/role.schema';
+import { Role } from '../../roles/schemas/role.schema';
 
 @Schema({ timestamps: true })
 export class User extends Document {

@@ -10,63 +10,71 @@ import { TicketStatus } from '../enums/ticket-status.enum';
 @Injectable()
 export class TicketRepository implements ITicketRepository {
   constructor(
-    @InjectModel(Ticket.name)
-    private readonly ticketModel: Model<TicketDocument>,
+    @InjectModel(Ticket.name) private readonly ticketModel: Model<Ticket>,
   ) {}
 
-  async create(createTicketDto: CreateTicketDto): Promise<Ticket> {
+  async create(createTicketDto: CreateTicketDto): Promise<TicketDocument> {
     const createdTicket = new this.ticketModel(createTicketDto);
     return createdTicket.save();
   }
 
-  async findAll(): Promise<Ticket[]> {
+  async findAll(): Promise<TicketDocument[]> {
     return this.ticketModel.find().exec();
   }
 
-  async findById(id: string): Promise<Ticket> {
+  async findById(id: string): Promise<TicketDocument | null> {
     return this.ticketModel.findById(id).exec();
   }
 
-  async findByEventId(eventId: string): Promise<Ticket[]> {
+  async findByEventId(eventId: string): Promise<TicketDocument[]> {
     return this.ticketModel.find({ event: eventId }).exec();
   }
 
-  async update(id: string, updateTicketDto: UpdateTicketDto): Promise<Ticket> {
+  async update(
+    id: string,
+    updateTicketDto: UpdateTicketDto,
+  ): Promise<TicketDocument | null> {
     return this.ticketModel
       .findByIdAndUpdate(id, updateTicketDto, { new: true })
       .exec();
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.ticketModel.deleteOne({ _id: id }).exec();
-    return result.deletedCount > 0;
+    const result = await this.ticketModel.findByIdAndDelete(id).exec();
+    return !!result;
   }
 
-  async findAvailableTicketsForEvent(eventId: string): Promise<Ticket[]> {
+  async findAvailableTicketsForEvent(
+    eventId: string,
+  ): Promise<TicketDocument[]> {
     return this.ticketModel
       .find({
         event: eventId,
         status: TicketStatus.AVAILABLE,
-        $expr: { $lt: ['$soldQuantity', '$quantity'] },
+        soldQuantity: { $lt: '$quantity' },
       })
       .exec();
   }
 
-  async updateTicketStatus(id: string, status: string): Promise<Ticket> {
+  async updateTicketStatus(
+    ticketId: string,
+    status: TicketStatus,
+  ): Promise<TicketDocument | null> {
     return this.ticketModel
-      .findByIdAndUpdate(id, { status }, { new: true })
+      .findByIdAndUpdate(ticketId, { status }, { new: true })
       .exec();
   }
 
-  async assignTicketToUser(id: string, userId: string): Promise<Ticket> {
+  async assignTicketToUser(
+    ticketId: string,
+    userId: string,
+  ): Promise<TicketDocument | null> {
     return this.ticketModel
       .findByIdAndUpdate(
-        id,
+        ticketId,
         {
-          owner: userId,
-          status: TicketStatus.SOLD,
-          soldAt: new Date(),
           $inc: { soldQuantity: 1 },
+          $set: { owner: userId },
         },
         { new: true },
       )

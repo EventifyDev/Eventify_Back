@@ -9,50 +9,65 @@ import { Types } from 'mongoose';
 
 describe('UserController', () => {
   let controller: UserController;
-  let userService: jest.Mocked<UserService>;
+  let userService: UserService;
 
   const mockUser = {
-    _id: new Types.ObjectId('67464220a978f5889273313c'),
-    username: 'adil40988',
-    email: 'test12@example.com',
-    password: '$2a$10$.knUxhY/oDGHR1MoCC530.IS0PE1k77cHHnrZa0fB0XsqIvfOSZUy',
-    createdAt: new Date('2024-11-26T21:48:16.809Z'),
-    updatedAt: new Date('2024-11-26T21:48:16.809Z'),
-    __v: 0,
-  } as unknown as User;
+    _id: 'user-id-1',
+    email: 'test@example.com',
+    username: 'testuser',
+    role: 'Participant',
+    isEmailVerified: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockUsers = [
+    mockUser,
+    {
+      _id: 'user-id-2',
+      email: 'test2@example.com',
+      username: 'testuser2',
+      role: 'Organizer',
+      isEmailVerified: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ];
 
   beforeEach(async () => {
-    const mockUserService = {
-      createUser: jest.fn(),
-      getAllUsers: jest.fn(),
-      getUserById: jest.fn(),
-      updateUser: jest.fn(),
-      deleteUser: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserController],
       providers: [
         {
           provide: UserService,
-          useValue: mockUserService,
+          useValue: {
+            createUser: jest.fn(),
+            getAllUsers: jest.fn(),
+            getUser: jest.fn(),
+            updateUser: jest.fn(),
+            deleteUser: jest.fn(),
+          },
         },
       ],
     }).compile();
 
     controller = module.get<UserController>(UserController);
-    userService = module.get(UserService);
+    userService = module.get<UserService>(UserService);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
   });
 
   describe('createUser', () => {
-    const createUserDto: CreateUserDto = {
-      email: 'test12@example.com',
-      username: 'adil40988',
-      password: 'password123',
-    };
-
     it('should create a new user', async () => {
-      userService.createUser.mockResolvedValue(mockUser);
+      const createUserDto: CreateUserDto = {
+        email: 'test@example.com',
+        username: 'testuser',
+        password: 'Password123!',
+      };
+
+      jest.spyOn(userService, 'createUser').mockResolvedValue(mockUser as any);
 
       const result = await controller.createUser(createUserDto);
 
@@ -63,58 +78,58 @@ describe('UserController', () => {
 
   describe('getAllUsers', () => {
     it('should return an array of users', async () => {
-      const users = [mockUser];
-      userService.getAllUsers.mockResolvedValue(users);
+      jest
+        .spyOn(userService, 'getAllUsers')
+        .mockResolvedValue(mockUsers as any);
 
       const result = await controller.getAllUsers();
 
       expect(userService.getAllUsers).toHaveBeenCalled();
-      expect(result).toEqual(users);
+      expect(result).toEqual(mockUsers);
     });
   });
 
   describe('getUserById', () => {
     it('should return a user by id', async () => {
-      userService.getUserById.mockResolvedValue(mockUser);
+      jest.spyOn(userService, 'getUser').mockResolvedValue(mockUser as any);
 
-      const result = await controller.getUserById('67464220a978f5889273313c');
+      const result = await controller.getUserById('user-id-1');
 
-      expect(userService.getUserById).toHaveBeenCalledWith(
-        '67464220a978f5889273313c',
-      );
+      expect(userService.getUser).toHaveBeenCalledWith({ _id: 'user-id-1' });
       expect(result).toEqual(mockUser);
     });
 
-    it('should throw NotFoundException when user not found', async () => {
-      userService.getUserById.mockResolvedValue(null);
+    it('should throw NotFoundException if user not found', async () => {
+      jest.spyOn(userService, 'getUser').mockResolvedValue(null);
 
-      await expect(
-        controller.getUserById('67464220a978f5889273313c'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.getUserById('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(userService.getUser).toHaveBeenCalledWith({
+        _id: 'non-existent-id',
+      });
     });
   });
 
   describe('updateUser', () => {
-    const updateUserDto: UpdateUserDto = {
-      email: 'updated@example.com',
-    };
-
     it('should update a user', async () => {
+      const updateUserDto: UpdateUserDto = {
+        username: 'updateduser',
+      };
+
       const updatedUser = {
         ...mockUser,
-        email: updateUserDto.email,
-        updatedAt: new Date(),
-      } as unknown as User;
+        username: 'updateduser',
+      };
 
-      userService.updateUser.mockResolvedValue(updatedUser);
+      jest
+        .spyOn(userService, 'updateUser')
+        .mockResolvedValue(updatedUser as any);
 
-      const result = await controller.updateUser(
-        '67464220a978f5889273313c',
-        updateUserDto,
-      );
+      const result = await controller.updateUser('user-id-1', updateUserDto);
 
       expect(userService.updateUser).toHaveBeenCalledWith(
-        '67464220a978f5889273313c',
+        { _id: 'user-id-1' },
         updateUserDto,
       );
       expect(result).toEqual(updatedUser);
@@ -123,13 +138,11 @@ describe('UserController', () => {
 
   describe('deleteUser', () => {
     it('should delete a user', async () => {
-      userService.deleteUser.mockResolvedValue(undefined);
+      jest.spyOn(userService, 'deleteUser').mockResolvedValue(undefined);
 
-      await controller.deleteUser('67464220a978f5889273313c');
+      await controller.deleteUser('user-id-1');
 
-      expect(userService.deleteUser).toHaveBeenCalledWith(
-        '67464220a978f5889273313c',
-      );
+      expect(userService.deleteUser).toHaveBeenCalledWith('user-id-1');
     });
   });
 });
